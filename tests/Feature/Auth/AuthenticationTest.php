@@ -11,7 +11,12 @@ use Laravel\Fortify\Features;
 test('login screen can be rendered', function () {
     $response = $this->get(route('login'));
 
-    $response->assertOk();
+    $response->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('auth/login')
+            ->has('canResetPassword')
+            ->has('teamInvitation'),
+        );
 });
 
 test('login screen includes team invitation context', function () {

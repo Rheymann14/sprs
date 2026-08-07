@@ -3,6 +3,7 @@
 use App\Models\User;
 use App\Models\UserRole;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 test('an administrator can be created interactively', function () {
     UserRole::query()->create(['name' => UserRole::Administrator]);
@@ -20,6 +21,8 @@ test('an administrator can be created interactively', function () {
         ->firstOrFail();
 
     expect($administrator->name)->toBe('Ada Lovelace')
+        ->and(Str::isUlid($administrator->user_role_id))->toBeTrue()
+        ->and(Str::isUlid($administrator->userRole?->id))->toBeTrue()
         ->and($administrator->userRole?->name)->toBe(UserRole::Administrator)
         ->and(Hash::check('password', $administrator->password))->toBeTrue()
         ->and(UserRole::query()->where('name', UserRole::Administrator)->count())->toBe(1);

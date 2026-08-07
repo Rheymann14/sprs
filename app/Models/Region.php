@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use Database\Factories\RegionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
@@ -17,14 +19,13 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, User> $users
  */
 #[Fillable(['name'])]
-class UserRole extends Model
+class Region extends Model
 {
-    use HasUlids;
-
-    public const string Administrator = 'administrator';
+    /** @use HasFactory<RegionFactory> */
+    use HasFactory, HasUlids;
 
     /**
-     * Get the users assigned to this role.
+     * Get the users assigned to the region.
      *
      * @return HasMany<User, $this>
      */

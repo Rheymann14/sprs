@@ -18,7 +18,8 @@ use Illuminate\Support\Carbon;
  * @property string $email
  * @property Carbon|null $email_verified_at
  * @property string $password
- * @property int|null $user_role_id
+ * @property string|null $user_role_id
+ * @property string|null $region_id
  * @property string|null $two_factor_secret
  * @property string|null $two_factor_recovery_codes
  * @property Carbon|null $two_factor_confirmed_at
@@ -26,8 +27,9 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read UserRole|null $userRole
+ * @property-read Region|null $region
  */
-#[Fillable(['name', 'email', 'password', 'user_role_id'])]
+#[Fillable(['name', 'email', 'password', 'user_role_id', 'region_id'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -42,6 +44,16 @@ class User extends Authenticatable
     public function userRole(): BelongsTo
     {
         return $this->belongsTo(UserRole::class);
+    }
+
+    /**
+     * Get the user's region.
+     *
+     * @return BelongsTo<Region, $this>
+     */
+    public function region(): BelongsTo
+    {
+        return $this->belongsTo(Region::class);
     }
 
     /**

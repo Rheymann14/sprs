@@ -1,6 +1,10 @@
 <?php
 
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FormManagementController;
+use App\Http\Controllers\IncidentFormController;
+use App\Http\Controllers\IncidentSubcategoryController;
+use App\Http\Controllers\IncidentTypeController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
@@ -8,5 +12,29 @@ Route::inertia('/', 'welcome')->name('home');
 Route::get('dashboard', DashboardController::class)
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
+
+Route::middleware(['auth', 'verified', 'can:manage-forms'])->group(function () {
+    Route::get('form-management', [FormManagementController::class, 'index'])
+        ->name('form-management.index');
+
+    Route::post('incident-types', [IncidentTypeController::class, 'store'])
+        ->name('incident-types.store');
+    Route::put('incident-types/{incident_type}', [IncidentTypeController::class, 'update'])
+        ->name('incident-types.update');
+    Route::delete('incident-types/{incident_type}', [IncidentTypeController::class, 'destroy'])
+        ->name('incident-types.destroy');
+
+    Route::post('incident-types/{incident_type}/subcategories', [IncidentSubcategoryController::class, 'store'])
+        ->name('incident-types.subcategories.store');
+    Route::put('incident-types/{incident_type}/subcategories/{subcategory}', [IncidentSubcategoryController::class, 'update'])
+        ->scopeBindings()
+        ->name('incident-types.subcategories.update');
+    Route::delete('incident-types/{incident_type}/subcategories/{subcategory}', [IncidentSubcategoryController::class, 'destroy'])
+        ->scopeBindings()
+        ->name('incident-types.subcategories.destroy');
+
+    Route::put('incident-subcategories/{incident_subcategory}/form', [IncidentFormController::class, 'update'])
+        ->name('incident-subcategories.form.update');
+});
 
 require __DIR__.'/settings.php';

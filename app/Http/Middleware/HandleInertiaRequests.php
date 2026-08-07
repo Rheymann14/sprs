@@ -39,7 +39,10 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
-                'user' => fn () => $request->user()?->loadMissing('region:id,name'),
+                'user' => fn () => $request->user()?->loadMissing([
+                    'region:id,name',
+                    'userRole:id,name',
+                ]),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];

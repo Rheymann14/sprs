@@ -1,5 +1,6 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, FolderGit2, LayoutGrid } from 'lucide-react';
+import { BookOpen, ClipboardList, FolderGit2, LayoutGrid } from 'lucide-react';
+import { index as formManagement } from '@/actions/App/Http/Controllers/FormManagementController';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -19,6 +20,7 @@ import type { NavItem } from '@/types';
 export function AppSidebar() {
     const { auth } = usePage().props;
     const dashboardUrl = dashboard();
+    const formManagementUrl = formManagement();
 
     const mainNavItems: NavItem[] = [
         {
@@ -26,6 +28,15 @@ export function AppSidebar() {
             href: dashboardUrl,
             icon: LayoutGrid,
         },
+        ...(auth.user.user_role?.name === 'administrator'
+            ? [
+                  {
+                      title: 'Form Management',
+                      href: formManagementUrl,
+                      icon: ClipboardList,
+                  },
+              ]
+            : []),
     ];
 
     const footerNavItems: NavItem[] = [

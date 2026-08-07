@@ -14,12 +14,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /**
  * @property string $id
  * @property string $incident_subcategory_id
+ * @property string|null $region_id
  * @property string $title
  * @property string|null $description
  * @property-read IncidentSubcategory $subcategory
+ * @property-read Region|null $region
  * @property-read Collection<int, FormSection> $sections
  */
-#[Fillable(['title', 'description'])]
+#[Fillable(['region_id', 'title', 'description'])]
 class IncidentForm extends Model
 {
     /** @use HasFactory<IncidentFormFactory> */
@@ -31,6 +33,14 @@ class IncidentForm extends Model
     public function subcategory(): BelongsTo
     {
         return $this->belongsTo(IncidentSubcategory::class, 'incident_subcategory_id');
+    }
+
+    /**
+     * @return BelongsTo<Region, $this>
+     */
+    public function region(): BelongsTo
+    {
+        return $this->belongsTo(Region::class);
     }
 
     /**

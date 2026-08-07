@@ -15,7 +15,8 @@ class UpdateIncidentFormRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user()?->can('manage-forms') ?? false;
+        return $this->user()?->region_id !== null
+            && $this->user()->can('manage-forms');
     }
 
     /**

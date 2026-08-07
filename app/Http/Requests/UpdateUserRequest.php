@@ -18,7 +18,9 @@ class UpdateUserRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user()?->can('manage-users') ?? false;
+        return $this->user()?->region_id !== null
+            && $this->user()->region_id === $this->route('user')?->region_id
+            && $this->user()->can('manage-users');
     }
 
     /**
@@ -40,7 +42,12 @@ class UpdateUserRequest extends FormRequest
             ],
             'password' => ['nullable', 'string', Password::min(8)],
             'user_role' => ['required', 'string', Rule::in(UserRole::assignableNames())],
-            'region_id' => ['required', 'string', Rule::exists(Region::class, 'id')],
+            'region_id' => [
+                'required',
+                'string',
+                Rule::exists(Region::class, 'id'),
+                Rule::in([$this->user()?->region_id]),
+            ],
         ];
     }
 

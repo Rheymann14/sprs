@@ -20,6 +20,7 @@ class UserManagementController extends Controller
     public function index(Request $request): Response
     {
         $search = $request->string('search')->trim()->toString();
+        $regionId = $request->user()?->region_id;
         $roleLabels = collect(UserRole::assignmentGroups())
             ->flatMap(fn (array $roles): array => $roles)
             ->put(UserRole::Administrator, 'Administrator');
@@ -30,6 +31,7 @@ class UserManagementController extends Controller
         return Inertia::render('user-management/index', [
             'users' => User::query()
                 ->select('id', 'name', 'email', 'user_role_id', 'region_id', 'created_at')
+                ->where('region_id', $regionId)
                 ->with(['userRole:id,name', 'region:id,name'])
                 ->when($search !== '', function (Builder $query) use ($matchingRoleNames, $search): void {
                     $query->where(function (Builder $searchQuery) use ($matchingRoleNames, $search): void {
@@ -79,6 +81,7 @@ class UserManagementController extends Controller
                 ->values(),
             'regions' => Region::query()
                 ->select('id', 'name')
+                ->whereKey($regionId)
                 ->orderBy('name')
                 ->get(),
         ]);
@@ -88,7 +91,7 @@ class UserManagementController extends Controller
     {
         $validated = $request->validated();
 
-        DB::transaction(function () use ($validated): void {
+        DB::transaction(function () use ($request, $validated): void {
             $role = UserRole::query()->firstOrCreate([
                 'name' => $validated['user_role'],
             ]);
@@ -98,7 +101,7 @@ class UserManagementController extends Controller
                 'email' => $validated['email'],
                 'password' => $validated['password'],
                 'user_role_id' => $role->id,
-                'region_id' => $validated['region_id'],
+                'region_id' => $request->user()->region_id,
             ]);
         });
 
@@ -109,6 +112,8 @@ class UserManagementController extends Controller
 
     public function update(UpdateUserRequest $request, User $user): RedirectResponse
     {
+        abort_unless($request->user()?->region_id === $user->region_id, 404);
+
         $validated = $request->validated();
 
         DB::transaction(function () use ($request, $user, $validated): void {
@@ -120,7 +125,7 @@ class UserManagementController extends Controller
                 'name' => $validated['name'],
                 'email' => $validated['email'],
                 'user_role_id' => $role->id,
-                'region_id' => $validated['region_id'],
+                'region_id' => $request->user()->region_id,
             ];
 
             if ($request->filled('password')) {
@@ -137,6 +142,7 @@ class UserManagementController extends Controller
 
     public function destroy(Request $request, User $user): RedirectResponse
     {
+        abort_unless($request->user()?->region_id === $user->region_id, 404);
         abort_if($request->user()?->is($user), 403, 'You cannot delete your own account.');
 
         $user->delete();

@@ -6,11 +6,12 @@ use App\Models\UserRole;
 use Illuminate\Support\Facades\Hash;
 use Inertia\Testing\AssertableInertia as Assert;
 
-function userManager(string $roleName = UserRole::SuperAdmin): User
+function userManager(string $roleName = UserRole::SuperAdmin, ?Region $region = null): User
 {
     $role = UserRole::query()->create(['name' => $roleName]);
+    $region ??= Region::factory()->create();
 
-    return User::factory()->for($role, 'userRole')->create();
+    return User::factory()->for($role, 'userRole')->for($region)->create();
 }
 
 test('guests are redirected from user management', function () {
@@ -26,7 +27,7 @@ test('unauthorized users cannot manage users', function () {
 test('user managers can view users, role groups and regions', function () {
     $region = Region::factory()->create(['name' => 'Region IV-A']);
 
-    $this->actingAs(userManager())
+    $this->actingAs(userManager(region: $region))
         ->get(route('user-management.index'))
         ->assertInertia(fn (Assert $page) => $page
             ->component('user-management/index')
@@ -45,17 +46,17 @@ test('user managers can view users, role groups and regions', function () {
 test('users can be searched and paginated', function () {
     $manager = userManager();
     $role = UserRole::query()->create(['name' => UserRole::RegionalOfficeStaff]);
-    $region = Region::factory()->create(['name' => 'Region VII']);
+    $manager->region->update(['name' => 'Region VII']);
 
     User::factory()
         ->count(11)
         ->for($role, 'userRole')
-        ->for($region)
+        ->for($manager->region)
         ->create();
 
     User::factory()
         ->for($role, 'userRole')
-        ->for($region)
+        ->for($manager->region)
         ->create([
             'name' => 'Ada Lovelace',
             'email' => 'ada@example.com',
@@ -70,14 +71,14 @@ test('users can be searched and paginated', function () {
         );
 
     $this->actingAs($manager)
-        ->get(route('user-management.index', ['search' => 'ada']))
+        ->get(route('user-management.index', ['search' => 'ada@example.com']))
         ->assertInertia(fn (Assert $page) => $page
-            ->where('filters.search', 'ada')
+            ->where('filters.search', 'ada@example.com')
             ->has('users.data', 1)
             ->where('users.data.0.name', 'Ada Lovelace')
             ->where('users.data.0.email', 'ada@example.com')
             ->where('users.data.0.role', 'RO Staff')
-            ->where('users.data.0.region', 'Region VII')
+            ->where('users.data.0.region', $manager->region->name)
         );
 
     $this->actingAs($manager)
@@ -92,7 +93,7 @@ test('users can be searched and paginated', function () {
 test('user managers can create a regionally assigned user', function () {
     $region = Region::factory()->create();
 
-    $this->actingAs(userManager(UserRole::CentralOfficeAdministrator))
+    $this->actingAs(userManager(UserRole::CentralOfficeAdministrator, $region))
         ->post(route('user-management.store'), [
             'name' => '  Juan   Dela Cruz  ',
             'email' => 'JUAN@EXAMPLE.COM',
@@ -138,8 +139,11 @@ test('user creation validates unique email role and region', function () {
 test('user managers can update a user', function () {
     $manager = userManager();
     $originalRole = UserRole::query()->create(['name' => UserRole::CentralOfficeStaff]);
-    $targetUser = User::factory()->for($originalRole, 'userRole')->create();
-    $region = Region::factory()->create();
+    $targetUser = User::factory()
+        ->for($originalRole, 'userRole')
+        ->for($manager->region)
+        ->create();
+    $region = $manager->region;
 
     $this->actingAs($manager)
         ->put(route('user-management.update', $targetUser), [
@@ -163,7 +167,7 @@ test('user managers can update a user', function () {
 
 test('user managers can delete another user but not themselves', function () {
     $manager = userManager();
-    $targetUser = User::factory()->create();
+    $targetUser = User::factory()->for($manager->region)->create();
 
     $this->actingAs($manager)
         ->delete(route('user-management.destroy', $targetUser))
@@ -177,4 +181,37 @@ test('user managers can delete another user but not themselves', function () {
         ->assertForbidden();
 
     $this->assertModelExists($manager);
+});
+
+test('user managers can only view and mutate users in their own region', function () {
+    $managerRegion = Region::factory()->create();
+    $otherRegion = Region::factory()->create();
+    $manager = userManager(region: $managerRegion);
+    $regionalUser = User::factory()->for($managerRegion)->create();
+    $otherUser = User::factory()->for($otherRegion)->create();
+
+    $this->actingAs($manager)
+        ->get(route('user-management.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('users.total', 2)
+            ->where('regions.0.id', $managerRegion->id)
+            ->has('regions', 1)
+            ->where('users.data.0.id', fn (int $id): bool => in_array($id, [$manager->id, $regionalUser->id], true))
+        );
+
+    $this->actingAs($manager)
+        ->delete(route('user-management.destroy', $otherUser))
+        ->assertNotFound();
+
+    $this->assertModelExists($otherUser);
+
+    $this->actingAs($manager)
+        ->post(route('user-management.store'), [
+            'name' => 'Other Region User',
+            'email' => 'other-region@example.com',
+            'password' => 'chedsprs2026',
+            'user_role' => UserRole::RegionalOfficeStaff,
+            'region_id' => $otherRegion->id,
+        ])
+        ->assertSessionHasErrors('region_id');
 });

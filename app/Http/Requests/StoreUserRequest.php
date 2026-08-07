@@ -18,7 +18,8 @@ class StoreUserRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user()?->can('manage-users') ?? false;
+        return $this->user()?->region_id !== null
+            && $this->user()->can('manage-users');
     }
 
     /**
@@ -33,7 +34,12 @@ class StoreUserRequest extends FormRequest
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', Rule::unique(User::class, 'email')],
             'password' => ['required', 'string', Password::min(8)],
             'user_role' => ['required', 'string', Rule::in(UserRole::assignableNames())],
-            'region_id' => ['required', 'string', Rule::exists(Region::class, 'id')],
+            'region_id' => [
+                'required',
+                'string',
+                Rule::exists(Region::class, 'id'),
+                Rule::in([$this->user()?->region_id]),
+            ],
         ];
     }
 

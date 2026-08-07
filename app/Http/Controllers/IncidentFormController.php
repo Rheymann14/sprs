@@ -15,9 +15,10 @@ class IncidentFormController extends Controller
     public function update(UpdateIncidentFormRequest $request, IncidentSubcategory $incidentSubcategory): RedirectResponse
     {
         $validated = $request->validated();
+        $regionId = $request->user()->region_id;
 
-        DB::transaction(function () use ($incidentSubcategory, $validated): void {
-            $form = $incidentSubcategory->form()->updateOrCreate([], [
+        DB::transaction(function () use ($incidentSubcategory, $regionId, $validated): void {
+            $form = $incidentSubcategory->forms()->updateOrCreate(['region_id' => $regionId], [
                 'title' => $validated['title'],
                 'description' => $validated['description'] ?? null,
             ]);

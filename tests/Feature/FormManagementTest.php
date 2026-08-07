@@ -7,16 +7,18 @@ use App\Models\FormSection;
 use App\Models\IncidentForm;
 use App\Models\IncidentSubcategory;
 use App\Models\IncidentType;
+use App\Models\Region;
 use App\Models\User;
 use App\Models\UserRole;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 
-function administrator(): User
+function administrator(?Region $region = null): User
 {
     $role = UserRole::query()->firstOrCreate(['name' => UserRole::Administrator]);
+    $region ??= Region::factory()->create();
 
-    return User::factory()->for($role, 'userRole')->create();
+    return User::factory()->for($role, 'userRole')->for($region)->create();
 }
 
 test('guests are redirected from form management', function () {
@@ -30,18 +32,22 @@ test('non administrators cannot manage forms', function () {
 });
 
 test('administrators can view normalized form definitions', function () {
+    $administrator = administrator();
     $incidentType = IncidentType::factory()->create(['name' => 'Fire']);
     $subcategory = IncidentSubcategory::factory()
         ->for($incidentType)
         ->create(['name' => 'Structural fire']);
-    $form = IncidentForm::factory()->for($subcategory, 'subcategory')->create();
+    $form = IncidentForm::factory()
+        ->for($subcategory, 'subcategory')
+        ->for($administrator->region)
+        ->create();
     $section = FormSection::factory()->for($form, 'form')->create();
     $field = FormField::factory()->for($section, 'section')->create([
         'type' => FormFieldType::Dropdown,
     ]);
     FormFieldOption::factory()->for($field, 'field')->create(['label' => 'Residential']);
 
-    $this->actingAs(administrator())
+    $this->actingAs($administrator)
         ->get(route('form-management.index'))
         ->assertInertia(fn (Assert $page) => $page
             ->component('form-management/index')
@@ -53,6 +59,7 @@ test('administrators can view normalized form definitions', function () {
 });
 
 test('administrators can search and paginate saved forms and open an assignment', function () {
+    $administrator = administrator();
     $incidentType = IncidentType::factory()->create(['name' => 'Medical Emergency']);
     $subcategory = IncidentSubcategory::factory()
         ->for($incidentType)
@@ -60,6 +67,7 @@ test('administrators can search and paginate saved forms and open an assignment'
 
     IncidentForm::factory()
         ->for($subcategory, 'subcategory')
+        ->for($administrator->region)
         ->create([
             'title' => 'Cardiac assessment',
             'created_at' => '2026-08-07 14:35:00',
@@ -67,9 +75,8 @@ test('administrators can search and paginate saved forms and open an assignment'
 
     IncidentForm::factory()
         ->count(10)
+        ->for($administrator->region)
         ->create();
-
-    $administrator = administrator();
 
     $this->actingAs($administrator)
         ->get(route('form-management.index'))
@@ -97,15 +104,19 @@ test('administrators can search and paginate saved forms and open an assignment'
 });
 
 test('saved forms can be filtered by incident type without selecting a subcategory', function () {
+    $administrator = administrator();
     $selectedIncidentType = IncidentType::factory()->create(['name' => 'Fire']);
     $selectedSubcategory = IncidentSubcategory::factory()
         ->for($selectedIncidentType)
         ->create(['name' => 'Structural fire']);
-    IncidentForm::factory()->for($selectedSubcategory, 'subcategory')->create();
+    IncidentForm::factory()
+        ->for($selectedSubcategory, 'subcategory')
+        ->for($administrator->region)
+        ->create();
 
-    IncidentForm::factory()->create();
+    IncidentForm::factory()->for($administrator->region)->create();
 
-    $this->actingAs(administrator())
+    $this->actingAs($administrator)
         ->get(route('form-management.index', [
             'incident_type' => $selectedIncidentType->id,
         ]))
@@ -168,8 +179,9 @@ test('duplicate subcategory names in a batch are rejected', function () {
 
 test('administrators can save a dynamic form into normalized tables', function () {
     $subcategory = IncidentSubcategory::factory()->create();
+    $administrator = administrator();
 
-    $response = $this->actingAs(administrator())
+    $response = $this->actingAs($administrator)
         ->put(route('incident-subcategories.form.update', $subcategory), [
             'title' => 'Flood assessment',
             'description' => 'Initial field assessment.',
@@ -209,6 +221,7 @@ test('administrators can save a dynamic form into normalized tables', function (
     $form = IncidentForm::query()->with('sections.fields.options')->firstOrFail();
 
     expect($form->incident_subcategory_id)->toBe($subcategory->id)
+        ->and($form->region_id)->toBe($administrator->region_id)
         ->and($form->sections)->toHaveCount(1)
         ->and($form->sections->first()->fields)->toHaveCount(2)
         ->and($form->sections->first()->fields->last()->options)->toHaveCount(2)
@@ -216,6 +229,57 @@ test('administrators can save a dynamic form into normalized tables', function (
         ->and(FormSection::query()->count())->toBe(1)
         ->and(FormField::query()->count())->toBe(2)
         ->and(FormFieldOption::query()->count())->toBe(2);
+});
+
+test('administrators only see and edit forms in their own region', function () {
+    $firstRegion = Region::factory()->create();
+    $secondRegion = Region::factory()->create();
+    $firstAdministrator = administrator($firstRegion);
+    $secondAdministrator = administrator($secondRegion);
+    $subcategory = IncidentSubcategory::factory()->create();
+
+    $firstForm = IncidentForm::factory()
+        ->for($subcategory, 'subcategory')
+        ->for($firstRegion)
+        ->create(['title' => 'Region I form']);
+    $secondForm = IncidentForm::factory()
+        ->for($subcategory, 'subcategory')
+        ->for($secondRegion)
+        ->create(['title' => 'Region II form']);
+
+    $this->actingAs($firstAdministrator)
+        ->put(route('incident-subcategories.form.update', $subcategory), [
+            'title' => 'Updated Region I form',
+            'description' => null,
+            'sections' => [
+                [
+                    'client_key' => Str::uuid()->toString(),
+                    'title' => 'Regional details',
+                    'description' => null,
+                    'fields' => [],
+                ],
+            ],
+        ])
+        ->assertRedirect(route('form-management.index'));
+
+    expect($firstForm->refresh()->title)->toBe('Updated Region I form')
+        ->and($secondForm->refresh()->title)->toBe('Region II form');
+
+    $this->actingAs($firstAdministrator)
+        ->get(route('form-management.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('savedForms.total', 1)
+            ->where('savedForms.data.0.id', $firstForm->id)
+            ->where('incidentTypes.0.subcategories.0.form.id', $firstForm->id)
+        );
+
+    $this->actingAs($secondAdministrator)
+        ->get(route('form-management.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('savedForms.total', 1)
+            ->where('savedForms.data.0.id', $secondForm->id)
+            ->where('incidentTypes.0.subcategories.0.form.id', $secondForm->id)
+        );
 });
 
 test('dropdown and radio fields require at least two options', function (string $type) {

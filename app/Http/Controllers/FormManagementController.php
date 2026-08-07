@@ -6,6 +6,7 @@ use App\Enums\FormFieldType;
 use App\Models\IncidentForm;
 use App\Models\IncidentType;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -16,11 +17,16 @@ class FormManagementController extends Controller
     public function index(Request $request): Response
     {
         $search = $request->string('search')->trim()->toString();
+        $regionId = $request->user()?->region_id;
         $incidentTypes = IncidentType::query()
             ->select('id', 'name')
             ->with([
                 'subcategories:id,incident_type_id,name',
-                'subcategories.form:id,incident_subcategory_id,title,description',
+                'subcategories.form' => function (HasOne $query) use ($regionId): void {
+                    $query
+                        ->select('id', 'incident_subcategory_id', 'region_id', 'title', 'description')
+                        ->where('region_id', $regionId);
+                },
                 'subcategories.form.sections:id,incident_form_id,title,description,sort_order',
                 'subcategories.form.sections.fields:id,form_section_id,type,label,description,placeholder,is_required,sort_order',
                 'subcategories.form.sections.fields.options:id,form_field_id,label,value,sort_order',
@@ -39,6 +45,7 @@ class FormManagementController extends Controller
             'incidentTypes' => $incidentTypes,
             'savedForms' => IncidentForm::query()
                 ->select('id', 'incident_subcategory_id', 'created_at')
+                ->where('region_id', $regionId)
                 ->with([
                     'subcategory:id,incident_type_id,name',
                     'subcategory.incidentType:id,name',

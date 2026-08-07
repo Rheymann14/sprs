@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Models\IncidentForm;
 use App\Models\IncidentSubcategory;
+use App\Models\Region;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -20,6 +21,7 @@ class IncidentFormFactory extends Factory
     {
         return [
             'incident_subcategory_id' => IncidentSubcategory::factory(),
+            'region_id' => Region::factory(),
             'title' => fake()->sentence(3),
             'description' => fake()->optional()->sentence(),
         ];

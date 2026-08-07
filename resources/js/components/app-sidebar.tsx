@@ -3,7 +3,7 @@ import {
     BookOpen,
     ClipboardList,
     FolderGit2,
-    LayoutGrid,
+    ChartNoAxesColumnIncreasing,
     Users,
 } from 'lucide-react';
 import { index as formManagement } from '@/actions/App/Http/Controllers/FormManagementController';
@@ -21,20 +21,20 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { dashboard } from '@/routes';
+import { statistics } from '@/routes';
 import type { NavItem } from '@/types';
 
 export function AppSidebar() {
     const { auth } = usePage().props;
-    const dashboardUrl = dashboard();
+    const statisticsUrl = statistics();
     const formManagementUrl = formManagement();
     const userManagementUrl = userManagement();
 
     const mainNavItems: NavItem[] = [
         {
-            title: 'Dashboard',
-            href: dashboardUrl,
-            icon: LayoutGrid,
+            title: 'Statistics',
+            href: statisticsUrl,
+            icon: ChartNoAxesColumnIncreasing,
         },
         ...(auth.user.user_role?.name === 'administrator'
             ? [
@@ -75,7 +75,7 @@ export function AppSidebar() {
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton size="lg" asChild>
-                            <Link href={dashboardUrl} prefetch>
+                            <Link href={statisticsUrl} prefetch>
                                 <AppLogo />
                             </Link>
                         </SidebarMenuButton>

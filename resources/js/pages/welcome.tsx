@@ -1,14 +1,14 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import { ArrowRight, Moon, Sun } from 'lucide-react';
 import { useAppearance } from '@/hooks/use-appearance';
-import { dashboard, login } from '@/routes';
+import { login, statistics } from '@/routes';
 
 export default function Welcome() {
     const { auth } = usePage().props;
     const { resolvedAppearance, updateAppearance } = useAppearance();
-    const destination = auth.user ? dashboard() : login();
+    const destination = auth.user ? statistics() : login();
     const actionLabel = auth.user
-        ? 'Go to your dashboard'
+        ? 'View statistics'
         : 'Sign in to your account';
 
     return (

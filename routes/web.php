@@ -1,18 +1,18 @@
 <?php
 
-use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FormManagementController;
 use App\Http\Controllers\IncidentFormController;
 use App\Http\Controllers\IncidentSubcategoryController;
 use App\Http\Controllers\IncidentTypeController;
+use App\Http\Controllers\StatisticsController;
 use App\Http\Controllers\UserManagementController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
 
-Route::get('dashboard', DashboardController::class)
+Route::get('statistics', StatisticsController::class)
     ->middleware(['auth', 'verified'])
-    ->name('dashboard');
+    ->name('statistics');
 
 Route::middleware(['auth', 'verified', 'can:manage-forms'])->group(function () {
     Route::get('form-management', [FormManagementController::class, 'index'])

@@ -3,13 +3,11 @@ import { ArrowRight } from 'lucide-react';
 import { dashboard, login } from '@/routes';
 
 export default function Welcome() {
-    const { auth, currentTeam } = usePage().props;
-    const destination =
-        auth.user && currentTeam ? dashboard(currentTeam.slug) : login();
-    const actionLabel =
-        auth.user && currentTeam
-            ? 'Go to your dashboard'
-            : 'Sign in to your account';
+    const { auth } = usePage().props;
+    const destination = auth.user ? dashboard() : login();
+    const actionLabel = auth.user
+        ? 'Go to your dashboard'
+        : 'Sign in to your account';
 
     return (
         <>
@@ -66,7 +64,6 @@ export default function Welcome() {
                 </div>
 
                 <footer className="relative z-10 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-center text-[0.7rem] leading-5 text-[#72809d] sm:pb-7 sm:text-xs">
-                    
                     For authorized CHED personnel only
                 </footer>
             </main>

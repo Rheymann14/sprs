@@ -2,38 +2,21 @@ import { Form, Head } from '@inertiajs/react';
 import { ShieldCheck } from 'lucide-react';
 import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
-import TeamInvitationAlert from '@/components/team-invitation-alert';
-import TextLink from '@/components/text-link';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { store } from '@/routes/login';
-import { request } from '@/routes/password';
-import type { TeamInvitationContext } from '@/types';
 
 type Props = {
     status?: string;
     canResetPassword: boolean;
-    teamInvitation?: TeamInvitationContext | null;
 };
 
-export default function Login({
-    status,
-    canResetPassword,
-    teamInvitation,
-}: Props) {
+export default function Login({ status }: Props) {
     return (
         <>
             <Head title="Log in" />
-
-            {teamInvitation && (
-                <TeamInvitationAlert
-                    invitation={teamInvitation}
-                    action="Log in"
-                />
-            )}
 
             <div className="rounded-2xl border border-slate-200 bg-card p-6 shadow-[0_1px_3px_0_rgb(15_23_42_/_0.12)] dark:border-slate-800">
                 <Form

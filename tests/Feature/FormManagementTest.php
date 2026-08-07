@@ -52,6 +52,50 @@ test('administrators can view normalized form definitions', function () {
         );
 });
 
+test('administrators can search and paginate saved forms and open an assignment', function () {
+    $incidentType = IncidentType::factory()->create(['name' => 'Medical Emergency']);
+    $subcategory = IncidentSubcategory::factory()
+        ->for($incidentType)
+        ->create(['name' => 'Cardiac Response']);
+
+    IncidentForm::factory()
+        ->for($subcategory, 'subcategory')
+        ->create([
+            'title' => 'Cardiac assessment',
+            'created_at' => '2026-08-07 14:35:00',
+        ]);
+
+    IncidentForm::factory()
+        ->count(10)
+        ->create();
+
+    $administrator = administrator();
+
+    $this->actingAs($administrator)
+        ->get(route('form-management.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('savedForms.data', 10)
+            ->where('savedForms.total', 11)
+            ->where('savedForms.last_page', 2)
+        );
+
+    $this->actingAs($administrator)
+        ->get(route('form-management.index', [
+            'search' => 'cardiac',
+            'incident_type' => $incidentType->id,
+            'subcategory' => $subcategory->id,
+        ]))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('filters.search', 'cardiac')
+            ->where('selection.incident_type_id', $incidentType->id)
+            ->where('selection.subcategory_id', $subcategory->id)
+            ->has('savedForms.data', 1)
+            ->where('savedForms.data.0.incident_type_name', 'Medical Emergency')
+            ->where('savedForms.data.0.subcategory_name', 'Cardiac Response')
+            ->where('savedForms.data.0.created_at_display', 'Aug 07, 2026 · 02:35 PM')
+        );
+});
+
 test('administrators can create and rename incident types and subcategories', function () {
     $administrator = administrator();
 

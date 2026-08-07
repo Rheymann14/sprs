@@ -1,9 +1,10 @@
-import { Head, router, useForm } from '@inertiajs/react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
 import {
     ArrowDown,
     ArrowUp,
     CalendarClock,
     CheckSquare,
+    ChevronLeft,
     ChevronRight,
     CircleDot,
     Eye,
@@ -14,6 +15,7 @@ import {
     Pencil,
     Plus,
     Save,
+    Search,
     TextCursorInput,
     TextQuote,
     Trash2,
@@ -129,9 +131,36 @@ type FieldTypeOption = {
     label: string;
 };
 
+type SavedForm = {
+    id: string;
+    incident_type_id: string;
+    incident_type_name: string;
+    subcategory_id: string;
+    subcategory_name: string;
+    created_at: string;
+    created_at_display: string;
+};
+
+type PaginatedSavedForms = {
+    data: SavedForm[];
+    current_page: number;
+    last_page: number;
+    from: number | null;
+    to: number | null;
+    total: number;
+};
+
 type PageProps = {
     incidentTypes: IncidentType[];
     fieldTypes: FieldTypeOption[];
+    savedForms: PaginatedSavedForms;
+    filters: {
+        search: string;
+    };
+    selection: {
+        incident_type_id: string | null;
+        subcategory_id: string | null;
+    };
 };
 
 const fieldIcons = {
@@ -358,9 +387,22 @@ function editorData(subcategory: IncidentSubcategory): EditorForm {
 export default function FormManagement({
     incidentTypes,
     fieldTypes,
+    savedForms,
+    filters,
+    selection,
 }: PageProps) {
-    const [selectedIncidentTypeId, setSelectedIncidentTypeId] = useState('');
-    const [selectedSubcategoryId, setSelectedSubcategoryId] = useState('');
+    const initialSubcategory = incidentTypes
+        .find((incidentType) => incidentType.id === selection.incident_type_id)
+        ?.subcategories.find(
+            (subcategory) => subcategory.id === selection.subcategory_id,
+        );
+    const [selectedIncidentTypeId, setSelectedIncidentTypeId] = useState(
+        initialSubcategory ? (selection.incident_type_id ?? '') : '',
+    );
+    const [selectedSubcategoryId, setSelectedSubcategoryId] = useState(
+        initialSubcategory ? (selection.subcategory_id ?? '') : '',
+    );
+    const [savedFormSearch, setSavedFormSearch] = useState(filters.search);
     const [previewOpen, setPreviewOpen] = useState(false);
     const [actionSectionKey, setActionSectionKey] = useState('');
     const [incidentTypeDialogOpen, setIncidentTypeDialogOpen] = useState(false);
@@ -383,9 +425,13 @@ export default function FormManagement({
     const createSubcategoryForm = useForm({ names: [''] });
     const editSubcategoryForm = useForm({ name: '' });
     const form = useForm<EditorForm>({
-        title: '',
-        description: '',
-        sections: [createEmptySection()],
+        ...(initialSubcategory
+            ? editorData(initialSubcategory)
+            : {
+                  title: '',
+                  description: '',
+                  sections: [createEmptySection()],
+              }),
     });
 
     const selectedIncidentType = useMemo(
@@ -712,6 +758,39 @@ export default function FormManagement({
         });
     };
 
+    const searchSavedForms = (event: FormEvent) => {
+        event.preventDefault();
+
+        router.get(
+            formManagement.url({
+                query: {
+                    search: savedFormSearch.trim() || undefined,
+                },
+            }),
+            {},
+            {
+                only: ['savedForms', 'filters'],
+                preserveScroll: true,
+                preserveState: true,
+                replace: true,
+            },
+        );
+    };
+
+    const clearSavedFormSearch = () => {
+        setSavedFormSearch('');
+        router.get(
+            formManagement.url(),
+            {},
+            {
+                only: ['savedForms', 'filters'],
+                preserveScroll: true,
+                preserveState: true,
+                replace: true,
+            },
+        );
+    };
+
     const validationMessages = Object.values(form.errors);
 
     return (
@@ -823,20 +902,234 @@ export default function FormManagement({
                 </Card>
 
                 {!selectedSubcategory ? (
-                    <div className="flex min-h-72 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center">
-                        <div className="rounded-full bg-muted p-3">
-                            <ListFilter className="size-6 text-muted-foreground" />
-                        </div>
-                        <div>
-                            <p className="font-medium">
-                                Choose a form assignment
-                            </p>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                                The builder will appear after you select an
-                                incident type and subcategory.
-                            </p>
-                        </div>
-                    </div>
+                    <Card>
+                        <CardHeader className="gap-4 sm:flex-row sm:items-end sm:justify-between">
+                            <div className="space-y-1.5">
+                                <CardTitle>Saved incident forms</CardTitle>
+                                <CardDescription>
+                                    Select a saved assignment to open it in the
+                                    form builder.
+                                </CardDescription>
+                            </div>
+                            <form
+                                onSubmit={searchSavedForms}
+                                className="flex w-full gap-2 sm:w-auto"
+                            >
+                                <Input
+                                    type="search"
+                                    value={savedFormSearch}
+                                    aria-label="Search saved incident forms"
+                                    placeholder="Search incident type or subcategory"
+                                    className="min-w-0 sm:w-72"
+                                    onChange={(event) =>
+                                        setSavedFormSearch(event.target.value)
+                                    }
+                                />
+                                <Button type="submit" variant="outline">
+                                    <Search />
+                                    <span className="sr-only sm:not-sr-only">
+                                        Search
+                                    </span>
+                                </Button>
+                                {filters.search && (
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={clearSavedFormSearch}
+                                    >
+                                        Clear
+                                    </Button>
+                                )}
+                            </form>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {savedForms.data.length > 0 ? (
+                                <>
+                                    <div className="overflow-hidden rounded-lg border">
+                                        <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1fr)_14rem_2.5rem] gap-4 border-b bg-muted/40 px-4 py-3 text-xs font-medium tracking-wide text-muted-foreground uppercase md:grid">
+                                            <span>Incident type</span>
+                                            <span>Subcategory</span>
+                                            <span>Date and time created</span>
+                                            <span className="sr-only">
+                                                Open form
+                                            </span>
+                                        </div>
+                                        <div className="divide-y">
+                                            {savedForms.data.map(
+                                                (savedForm) => (
+                                                    <Link
+                                                        key={savedForm.id}
+                                                        href={formManagement({
+                                                            query: {
+                                                                incident_type:
+                                                                    savedForm.incident_type_id,
+                                                                subcategory:
+                                                                    savedForm.subcategory_id,
+                                                            },
+                                                        })}
+                                                        className="group grid gap-4 px-4 py-4 transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_14rem_2.5rem] md:items-center"
+                                                        aria-label={`Open ${savedForm.incident_type_name}, ${savedForm.subcategory_name} form`}
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <span className="text-xs font-medium text-muted-foreground md:hidden">
+                                                                Incident type
+                                                            </span>
+                                                            <p className="truncate font-medium">
+                                                                {
+                                                                    savedForm.incident_type_name
+                                                                }
+                                                            </p>
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <span className="text-xs font-medium text-muted-foreground md:hidden">
+                                                                Subcategory
+                                                            </span>
+                                                            <p className="truncate text-sm">
+                                                                {
+                                                                    savedForm.subcategory_name
+                                                                }
+                                                            </p>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-xs font-medium text-muted-foreground md:hidden">
+                                                                Date and time
+                                                                created
+                                                            </span>
+                                                            <time
+                                                                dateTime={
+                                                                    savedForm.created_at
+                                                                }
+                                                                className="block text-sm text-muted-foreground"
+                                                            >
+                                                                {
+                                                                    savedForm.created_at_display
+                                                                }
+                                                            </time>
+                                                        </div>
+                                                        <ChevronRight className="hidden size-4 justify-self-end text-muted-foreground transition-transform group-hover:translate-x-0.5 md:block" />
+                                                    </Link>
+                                                ),
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                                        <p>
+                                            Showing {savedForms.from}–
+                                            {savedForms.to} of{' '}
+                                            {savedForms.total}
+                                        </p>
+                                        <div className="flex items-center gap-2">
+                                            {savedForms.current_page > 1 ? (
+                                                <Button
+                                                    asChild
+                                                    size="sm"
+                                                    variant="outline"
+                                                >
+                                                    <Link
+                                                        href={formManagement({
+                                                            query: {
+                                                                search:
+                                                                    filters.search ||
+                                                                    undefined,
+                                                                page:
+                                                                    savedForms.current_page -
+                                                                    1,
+                                                            },
+                                                        })}
+                                                        only={[
+                                                            'savedForms',
+                                                            'filters',
+                                                        ]}
+                                                        preserveScroll
+                                                        preserveState
+                                                    >
+                                                        <ChevronLeft /> Previous
+                                                    </Link>
+                                                </Button>
+                                            ) : (
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    disabled
+                                                >
+                                                    <ChevronLeft /> Previous
+                                                </Button>
+                                            )}
+                                            <span className="px-2">
+                                                Page {savedForms.current_page}{' '}
+                                                of {savedForms.last_page}
+                                            </span>
+                                            {savedForms.current_page <
+                                            savedForms.last_page ? (
+                                                <Button
+                                                    asChild
+                                                    size="sm"
+                                                    variant="outline"
+                                                >
+                                                    <Link
+                                                        href={formManagement({
+                                                            query: {
+                                                                search:
+                                                                    filters.search ||
+                                                                    undefined,
+                                                                page:
+                                                                    savedForms.current_page +
+                                                                    1,
+                                                            },
+                                                        })}
+                                                        only={[
+                                                            'savedForms',
+                                                            'filters',
+                                                        ]}
+                                                        preserveScroll
+                                                        preserveState
+                                                    >
+                                                        Next <ChevronRight />
+                                                    </Link>
+                                                </Button>
+                                            ) : (
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    disabled
+                                                >
+                                                    Next <ChevronRight />
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex min-h-56 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center">
+                                    <div className="rounded-full bg-muted p-3">
+                                        <ListFilter className="size-6 text-muted-foreground" />
+                                    </div>
+                                    <div>
+                                        <p className="font-medium">
+                                            {filters.search
+                                                ? 'No saved forms found'
+                                                : 'No saved forms yet'}
+                                        </p>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            {filters.search
+                                                ? 'Try a different incident type or subcategory.'
+                                                : 'Select an assignment above to create its first form.'}
+                                        </p>
+                                    </div>
+                                    {filters.search && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={clearSavedFormSearch}
+                                        >
+                                            Clear search
+                                        </Button>
+                                    )}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
                 ) : (
                     <form
                         onSubmit={saveForm}
@@ -1485,27 +1778,6 @@ export default function FormManagement({
                                     <Button
                                         type="button"
                                         variant="outline"
-                                        className="w-full"
-                                        onClick={() => setPreviewOpen(true)}
-                                    >
-                                        <Eye /> Preview form
-                                    </Button>
-                                    <Button
-                                        type="submit"
-                                        className="w-full"
-                                        disabled={form.processing}
-                                    >
-                                        <Save />{' '}
-                                        {form.processing
-                                            ? 'Saving...'
-                                            : 'Save form'}
-                                    </Button>
-
-                                    <Separator />
-
-                                    <Button
-                                        type="button"
-                                        variant="outline"
                                         className="w-full border-dashed"
                                         onClick={addSection}
                                     >
@@ -1554,6 +1826,27 @@ export default function FormManagement({
                                             <Plus /> Add field
                                         </Button>
                                     </div>
+
+                                    <Separator />
+
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="w-full"
+                                        onClick={() => setPreviewOpen(true)}
+                                    >
+                                        <Eye /> Preview form
+                                    </Button>
+                                    <Button
+                                        type="submit"
+                                        className="w-full"
+                                        disabled={form.processing}
+                                    >
+                                        <Save />{' '}
+                                        {form.processing
+                                            ? 'Saving...'
+                                            : 'Save form'}
+                                    </Button>
                                 </CardContent>
                             </Card>
                         </aside>

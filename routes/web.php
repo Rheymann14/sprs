@@ -5,6 +5,7 @@ use App\Http\Controllers\FormManagementController;
 use App\Http\Controllers\IncidentFormController;
 use App\Http\Controllers\IncidentSubcategoryController;
 use App\Http\Controllers\IncidentTypeController;
+use App\Http\Controllers\UserManagementController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
@@ -35,6 +36,17 @@ Route::middleware(['auth', 'verified', 'can:manage-forms'])->group(function () {
 
     Route::put('incident-subcategories/{incident_subcategory}/form', [IncidentFormController::class, 'update'])
         ->name('incident-subcategories.form.update');
+});
+
+Route::middleware(['auth', 'verified', 'can:manage-users'])->group(function () {
+    Route::get('user-management', [UserManagementController::class, 'index'])
+        ->name('user-management.index');
+    Route::post('user-management', [UserManagementController::class, 'store'])
+        ->name('user-management.store');
+    Route::put('user-management/{user}', [UserManagementController::class, 'update'])
+        ->name('user-management.update');
+    Route::delete('user-management/{user}', [UserManagementController::class, 'destroy'])
+        ->name('user-management.destroy');
 });
 
 require __DIR__.'/settings.php';

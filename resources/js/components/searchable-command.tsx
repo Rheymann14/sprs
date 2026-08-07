@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 export type CommandOption = {
     value: string;
     label: string;
+    group?: string;
     icon?: ComponentType<{ className?: string }>;
 };
 
@@ -43,6 +44,19 @@ export function SearchableCommand({
                     .includes(search.toLocaleLowerCase()),
             ),
         [options, search],
+    );
+    const groupedOptions = useMemo(
+        () =>
+            filteredOptions.reduce<Map<string, CommandOption[]>>(
+                (groups, option) => {
+                    const group = option.group ?? '';
+                    groups.set(group, [...(groups.get(group) ?? []), option]);
+
+                    return groups;
+                },
+                new Map(),
+            ),
+        [filteredOptions],
     );
 
     useEffect(() => {
@@ -111,39 +125,55 @@ export function SearchableCommand({
                                 {emptyMessage}
                             </p>
                         ) : (
-                            filteredOptions.map((option) => {
-                                const OptionIcon = option.icon;
-
-                                return (
-                                    <button
-                                        key={option.value}
-                                        type="button"
-                                        role="option"
-                                        aria-selected={value === option.value}
-                                        className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm outline-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent"
-                                        onClick={() => {
-                                            onValueChange(option.value);
-                                            setOpen(false);
-                                            setSearch('');
-                                        }}
-                                    >
-                                        <Check
-                                            className={cn(
-                                                'size-4',
-                                                value === option.value
-                                                    ? 'opacity-100'
-                                                    : 'opacity-0',
-                                            )}
-                                        />
-                                        {OptionIcon && (
-                                            <OptionIcon className="size-4 shrink-0 text-muted-foreground" />
+                            Array.from(groupedOptions.entries()).map(
+                                ([group, groupOptions]) => (
+                                    <div key={group || 'options'}>
+                                        {group && (
+                                            <p className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">
+                                                {group}
+                                            </p>
                                         )}
-                                        <span className="truncate">
-                                            {option.label}
-                                        </span>
-                                    </button>
-                                );
-                            })
+                                        {groupOptions.map((option) => {
+                                            const OptionIcon = option.icon;
+
+                                            return (
+                                                <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    role="option"
+                                                    aria-selected={
+                                                        value === option.value
+                                                    }
+                                                    className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm outline-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent"
+                                                    onClick={() => {
+                                                        onValueChange(
+                                                            option.value,
+                                                        );
+                                                        setOpen(false);
+                                                        setSearch('');
+                                                    }}
+                                                >
+                                                    <Check
+                                                        className={cn(
+                                                            'size-4',
+                                                            value ===
+                                                                option.value
+                                                                ? 'opacity-100'
+                                                                : 'opacity-0',
+                                                        )}
+                                                    />
+                                                    {OptionIcon && (
+                                                        <OptionIcon className="size-4 shrink-0 text-muted-foreground" />
+                                                    )}
+                                                    <span className="truncate">
+                                                        {option.label}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                ),
+                            )
                         )}
                     </div>
                 </div>

@@ -1,6 +1,13 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, ClipboardList, FolderGit2, LayoutGrid } from 'lucide-react';
+import {
+    BookOpen,
+    ClipboardList,
+    FolderGit2,
+    LayoutGrid,
+    Users,
+} from 'lucide-react';
 import { index as formManagement } from '@/actions/App/Http/Controllers/FormManagementController';
+import { index as userManagement } from '@/actions/App/Http/Controllers/UserManagementController';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -21,6 +28,7 @@ export function AppSidebar() {
     const { auth } = usePage().props;
     const dashboardUrl = dashboard();
     const formManagementUrl = formManagement();
+    const userManagementUrl = userManagement();
 
     const mainNavItems: NavItem[] = [
         {
@@ -34,6 +42,15 @@ export function AppSidebar() {
                       title: 'Form Management',
                       href: formManagementUrl,
                       icon: ClipboardList,
+                  },
+              ]
+            : []),
+        ...(auth.permissions.manage_users
+            ? [
+                  {
+                      title: 'User Management',
+                      href: userManagementUrl,
+                      icon: Users,
                   },
               ]
             : []),

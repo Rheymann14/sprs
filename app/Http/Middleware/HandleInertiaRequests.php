@@ -43,6 +43,9 @@ class HandleInertiaRequests extends Middleware
                     'region:id,name',
                     'userRole:id,name',
                 ]),
+                'permissions' => [
+                    'manage_users' => $request->user()?->can('manage-users') ?? false,
+                ],
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];

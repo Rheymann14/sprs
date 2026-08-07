@@ -23,6 +23,65 @@ class UserRole extends Model
 
     public const string Administrator = 'administrator';
 
+    public const string SuperAdmin = 'super-admin';
+
+    public const string CentralOfficeAdministrator = 'co-administrator';
+
+    public const string CentralOfficeStaff = 'co-staff';
+
+    public const string RegionalOfficeAdministrator = 'ro-administrator';
+
+    public const string RegionalOfficeStaff = 'ro-staff';
+
+    public const string Agency = 'agency';
+
+    /**
+     * Get the roles that may be assigned through user management.
+     *
+     * @return array<string, array<string, string>>
+     */
+    public static function assignmentGroups(): array
+    {
+        return [
+            'CHED Central Office' => [
+                self::SuperAdmin => 'Super Admin',
+                self::CentralOfficeAdministrator => 'CO Administrator',
+                self::CentralOfficeStaff => 'CO Staff',
+            ],
+            'CHED Regional Office' => [
+                self::RegionalOfficeAdministrator => 'RO Administrator',
+                self::RegionalOfficeStaff => 'RO Staff',
+            ],
+            'Agency' => [
+                self::Agency => 'Agency',
+            ],
+        ];
+    }
+
+    /**
+     * Get the role names that may be assigned through user management.
+     *
+     * @return list<string>
+     */
+    public static function assignableNames(): array
+    {
+        return array_keys(array_merge(...array_values(self::assignmentGroups())));
+    }
+
+    /**
+     * Get the roles allowed to manage user accounts.
+     *
+     * @return list<string>
+     */
+    public static function userManagerNames(): array
+    {
+        return [
+            self::Administrator,
+            self::SuperAdmin,
+            self::CentralOfficeAdministrator,
+        ];
+    }
+
     /**
      * Get the users assigned to this role.
      *

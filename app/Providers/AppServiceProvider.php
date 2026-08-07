@@ -31,6 +31,10 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('manage-forms', fn (User $user): bool => $user->userRole()
             ->where('name', UserRole::Administrator)
             ->exists());
+
+        Gate::define('manage-users', fn (User $user): bool => $user->userRole()
+            ->whereIn('name', UserRole::userManagerNames())
+            ->exists());
     }
 
     /**

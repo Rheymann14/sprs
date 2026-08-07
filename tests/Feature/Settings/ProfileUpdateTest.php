@@ -1,15 +1,22 @@
 <?php
 
+use App\Models\Region;
 use App\Models\User;
+use Inertia\Testing\AssertableInertia as Assert;
 
 test('profile page is displayed', function () {
-    $user = User::factory()->create();
+    $region = Region::factory()->create(['name' => 'Region IV-A']);
+    $user = User::factory()->for($region)->create();
 
     $response = $this
         ->actingAs($user)
         ->get(route('profile.edit'));
 
-    $response->assertOk();
+    $response
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('settings/profile')
+            ->where('auth.user.region.name', 'Region IV-A'));
 });
 
 test('profile information can be updated', function () {

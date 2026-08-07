@@ -26,7 +26,7 @@ export default function Profile() {
                 <Heading
                     variant="small"
                     title="Profile"
-                    description="Update your name and email address"
+                    description="Update your name and email address, and view your assigned region"
                 />
 
                 <Form
@@ -74,6 +74,20 @@ export default function Profile() {
                                 <InputError
                                     className="mt-2"
                                     message={errors.email}
+                                />
+                            </div>
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="region">Region</Label>
+
+                                <Input
+                                    id="region"
+                                    className="mt-1 block w-full cursor-not-allowed bg-muted/50 text-muted-foreground"
+                                    value={
+                                        auth.user.region?.name ?? 'Unassigned'
+                                    }
+                                    readOnly
+                                    aria-readonly="true"
                                 />
                             </div>
 

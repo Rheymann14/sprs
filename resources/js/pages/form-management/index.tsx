@@ -57,6 +57,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 type FieldType =
@@ -163,6 +168,14 @@ type PageProps = {
     };
 };
 
+type DeletionTarget =
+    | { kind: 'incidentType'; incidentType: IncidentType }
+    | {
+          kind: 'subcategory';
+          incidentTypeId: string;
+          subcategory: IncidentSubcategory;
+      };
+
 const fieldIcons = {
     text: TextCursorInput,
     number: Hash,
@@ -173,6 +186,9 @@ const fieldIcons = {
     checkbox: CheckSquare,
     radio: CircleDot,
 };
+
+const workflowCardClassName =
+    'border-blue-200/80 bg-blue-50/40 dark:border-blue-900/70 dark:bg-blue-950/20';
 
 function PreviewField({ field }: { field: EditorField }) {
     const fieldId = `preview-${field.client_key}`;
@@ -397,7 +413,7 @@ export default function FormManagement({
             (subcategory) => subcategory.id === selection.subcategory_id,
         );
     const [selectedIncidentTypeId, setSelectedIncidentTypeId] = useState(
-        initialSubcategory ? (selection.incident_type_id ?? '') : '',
+        selection.incident_type_id ?? '',
     );
     const [selectedSubcategoryId, setSelectedSubcategoryId] = useState(
         initialSubcategory ? (selection.subcategory_id ?? '') : '',
@@ -407,6 +423,10 @@ export default function FormManagement({
     const [actionSectionKey, setActionSectionKey] = useState('');
     const [incidentTypeDialogOpen, setIncidentTypeDialogOpen] = useState(false);
     const [subcategoryDialogOpen, setSubcategoryDialogOpen] = useState(false);
+    const [deletionTarget, setDeletionTarget] = useState<DeletionTarget | null>(
+        null,
+    );
+    const [deletionProcessing, setDeletionProcessing] = useState(false);
     const [editingIncidentType, setEditingIncidentType] =
         useState<IncidentType | null>(null);
     const [editingSubcategory, setEditingSubcategory] =
@@ -444,6 +464,7 @@ export default function FormManagement({
     const selectedSubcategory = selectedIncidentType?.subcategories.find(
         (subcategory) => subcategory.id === selectedSubcategoryId,
     );
+    const showSavedForms = !selectedSubcategory;
 
     const incidentTypeOptions = incidentTypes.map((incidentType) => ({
         value: incidentType.id,
@@ -570,6 +591,22 @@ export default function FormManagement({
         clearUnsavedItems();
         form.reset();
         form.clearErrors();
+
+        router.get(
+            formManagement.url({
+                query: {
+                    incident_type: incidentTypeId || undefined,
+                    search: savedFormSearch.trim() || undefined,
+                },
+            }),
+            {},
+            {
+                only: ['savedForms', 'filters', 'selection'],
+                preserveScroll: true,
+                preserveState: true,
+                replace: true,
+            },
+        );
     };
 
     const selectSubcategory = (subcategoryId: string) => {
@@ -588,6 +625,65 @@ export default function FormManagement({
         clearUnsavedItems();
         form.setData(data);
         form.clearErrors();
+    };
+
+    const requestIncidentTypeDeletion = (incidentType: IncidentType) => {
+        setDeletionTarget({ kind: 'incidentType', incidentType });
+    };
+
+    const requestSubcategoryDeletion = (subcategory: IncidentSubcategory) => {
+        if (!selectedIncidentType) {
+            return;
+        }
+
+        setDeletionTarget({
+            kind: 'subcategory',
+            incidentTypeId: selectedIncidentType.id,
+            subcategory,
+        });
+    };
+
+    const confirmDeletion = () => {
+        if (!deletionTarget || deletionProcessing) {
+            return;
+        }
+
+        setDeletionProcessing(true);
+
+        if (deletionTarget.kind === 'incidentType') {
+            router.delete(destroyIncidentType(deletionTarget.incidentType.id), {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setIncidentTypeDialogOpen(false);
+                    setSelectedIncidentTypeId('');
+                    setSelectedSubcategoryId('');
+                    setActionSectionKey('');
+                    clearUnsavedItems();
+                    form.reset();
+                    form.clearErrors();
+                    setDeletionTarget(null);
+                },
+                onFinish: () => setDeletionProcessing(false),
+            });
+
+            return;
+        }
+
+        router.delete(
+            destroySubcategory({
+                incident_type: deletionTarget.incidentTypeId,
+                subcategory: deletionTarget.subcategory.id,
+            }),
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setSubcategoryDialogOpen(false);
+                    setSelectedSubcategoryId('');
+                    setDeletionTarget(null);
+                },
+                onFinish: () => setDeletionProcessing(false),
+            },
+        );
     };
 
     const updateSection = (
@@ -764,6 +860,7 @@ export default function FormManagement({
         router.get(
             formManagement.url({
                 query: {
+                    incident_type: selectedIncidentTypeId || undefined,
                     search: savedFormSearch.trim() || undefined,
                 },
             }),
@@ -780,7 +877,11 @@ export default function FormManagement({
     const clearSavedFormSearch = () => {
         setSavedFormSearch('');
         router.get(
-            formManagement.url(),
+            formManagement.url({
+                query: {
+                    incident_type: selectedIncidentTypeId || undefined,
+                },
+            }),
             {},
             {
                 only: ['savedForms', 'filters'],
@@ -808,7 +909,7 @@ export default function FormManagement({
                     </p>
                 </div>
 
-                <Card>
+                <Card className={workflowCardClassName}>
                     <CardHeader>
                         <CardTitle>Form assignment</CardTitle>
                         <CardDescription>
@@ -828,30 +929,69 @@ export default function FormManagement({
                                     emptyMessage="No incident types found."
                                     onValueChange={selectIncidentType}
                                 />
-                                <Button
-                                    type="button"
-                                    size="icon"
-                                    variant="outline"
-                                    aria-label="Add incident type"
-                                    onClick={() => openIncidentTypeDialog(null)}
-                                >
-                                    <Plus />
-                                </Button>
-                                <Button
-                                    type="button"
-                                    size="icon"
-                                    variant="outline"
-                                    aria-label="Edit incident type"
-                                    disabled={!selectedIncidentType}
-                                    onClick={() =>
-                                        selectedIncidentType &&
-                                        openIncidentTypeDialog(
-                                            selectedIncidentType,
-                                        )
-                                    }
-                                >
-                                    <Pencil />
-                                </Button>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            size="icon"
+                                            variant="outline"
+                                            aria-label="Add incident type"
+                                            onClick={() =>
+                                                openIncidentTypeDialog(null)
+                                            }
+                                        >
+                                            <Plus />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        Add incident type
+                                    </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            size="icon"
+                                            variant="outline"
+                                            aria-label="Edit incident type"
+                                            disabled={!selectedIncidentType}
+                                            onClick={() =>
+                                                selectedIncidentType &&
+                                                openIncidentTypeDialog(
+                                                    selectedIncidentType,
+                                                )
+                                            }
+                                        >
+                                            <Pencil />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        Edit incident type
+                                    </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            size="icon"
+                                            variant="outline"
+                                            className="text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+                                            aria-label="Delete incident type"
+                                            disabled={!selectedIncidentType}
+                                            onClick={() =>
+                                                selectedIncidentType &&
+                                                requestIncidentTypeDeletion(
+                                                    selectedIncidentType,
+                                                )
+                                            }
+                                        >
+                                            <Trash2 />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        Delete incident type
+                                    </TooltipContent>
+                                </Tooltip>
                             </div>
                         </div>
 
@@ -871,37 +1011,76 @@ export default function FormManagement({
                                     disabled={!selectedIncidentType}
                                     onValueChange={selectSubcategory}
                                 />
-                                <Button
-                                    type="button"
-                                    size="icon"
-                                    variant="outline"
-                                    aria-label="Add subcategory"
-                                    disabled={!selectedIncidentType}
-                                    onClick={() => openSubcategoryDialog(null)}
-                                >
-                                    <Plus />
-                                </Button>
-                                <Button
-                                    type="button"
-                                    size="icon"
-                                    variant="outline"
-                                    aria-label="Edit subcategory"
-                                    disabled={!selectedSubcategory}
-                                    onClick={() =>
-                                        selectedSubcategory &&
-                                        openSubcategoryDialog(
-                                            selectedSubcategory,
-                                        )
-                                    }
-                                >
-                                    <Pencil />
-                                </Button>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            size="icon"
+                                            variant="outline"
+                                            aria-label="Add subcategory"
+                                            disabled={!selectedIncidentType}
+                                            onClick={() =>
+                                                openSubcategoryDialog(null)
+                                            }
+                                        >
+                                            <Plus />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        Add subcategory
+                                    </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            size="icon"
+                                            variant="outline"
+                                            aria-label="Edit subcategory"
+                                            disabled={!selectedSubcategory}
+                                            onClick={() =>
+                                                selectedSubcategory &&
+                                                openSubcategoryDialog(
+                                                    selectedSubcategory,
+                                                )
+                                            }
+                                        >
+                                            <Pencil />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        Edit subcategory
+                                    </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            size="icon"
+                                            variant="outline"
+                                            className="text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+                                            aria-label="Delete subcategory"
+                                            disabled={!selectedSubcategory}
+                                            onClick={() =>
+                                                selectedSubcategory &&
+                                                requestSubcategoryDeletion(
+                                                    selectedSubcategory,
+                                                )
+                                            }
+                                        >
+                                            <Trash2 />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        Delete subcategory
+                                    </TooltipContent>
+                                </Tooltip>
                             </div>
                         </div>
                     </CardContent>
                 </Card>
 
-                {!selectedSubcategory ? (
+                {showSavedForms ? (
                     <Card>
                         <CardHeader className="gap-4 sm:flex-row sm:items-end sm:justify-between">
                             <div className="space-y-1.5">
@@ -1032,6 +1211,9 @@ export default function FormManagement({
                                                                 search:
                                                                     filters.search ||
                                                                     undefined,
+                                                                incident_type:
+                                                                    selectedIncidentTypeId ||
+                                                                    undefined,
                                                                 page:
                                                                     savedForms.current_page -
                                                                     1,
@@ -1072,6 +1254,9 @@ export default function FormManagement({
                                                             query: {
                                                                 search:
                                                                     filters.search ||
+                                                                    undefined,
+                                                                incident_type:
+                                                                    selectedIncidentTypeId ||
                                                                     undefined,
                                                                 page:
                                                                     savedForms.current_page +
@@ -1766,7 +1951,7 @@ export default function FormManagement({
                         </div>
 
                         <aside className="self-start xl:sticky xl:top-4 xl:z-10">
-                            <Card>
+                            <Card className={workflowCardClassName}>
                                 <CardHeader>
                                     <CardTitle>Form actions</CardTitle>
                                     <CardDescription>
@@ -1908,27 +2093,11 @@ export default function FormManagement({
                                     type="button"
                                     variant="destructive"
                                     className="sm:mr-auto"
-                                    onClick={() => {
-                                        if (
-                                            confirm(
-                                                'Delete this incident type and all of its subcategories and forms?',
-                                            )
-                                        ) {
-                                            router.delete(
-                                                destroyIncidentType(
-                                                    editingIncidentType.id,
-                                                ),
-                                                {
-                                                    onSuccess: () => {
-                                                        setIncidentTypeDialogOpen(
-                                                            false,
-                                                        );
-                                                        selectIncidentType('');
-                                                    },
-                                                },
-                                            );
-                                        }
-                                    }}
+                                    onClick={() =>
+                                        requestIncidentTypeDeletion(
+                                            editingIncidentType,
+                                        )
+                                    }
                                 >
                                     <Trash2 /> Delete
                                 </Button>
@@ -2091,32 +2260,11 @@ export default function FormManagement({
                                     type="button"
                                     variant="destructive"
                                     className="sm:mr-auto"
-                                    onClick={() => {
-                                        if (
-                                            confirm(
-                                                'Delete this subcategory and its form?',
-                                            )
-                                        ) {
-                                            router.delete(
-                                                destroySubcategory({
-                                                    incident_type:
-                                                        selectedIncidentType.id,
-                                                    subcategory:
-                                                        editingSubcategory.id,
-                                                }),
-                                                {
-                                                    onSuccess: () => {
-                                                        setSubcategoryDialogOpen(
-                                                            false,
-                                                        );
-                                                        setSelectedSubcategoryId(
-                                                            '',
-                                                        );
-                                                    },
-                                                },
-                                            );
-                                        }
-                                    }}
+                                    onClick={() =>
+                                        requestSubcategoryDeletion(
+                                            editingSubcategory,
+                                        )
+                                    }
                                 >
                                     <Trash2 /> Delete
                                 </Button>
@@ -2137,6 +2285,60 @@ export default function FormManagement({
                             </Button>
                         </DialogFooter>
                     </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={deletionTarget !== null}
+                onOpenChange={(open) => {
+                    if (!open && !deletionProcessing) {
+                        setDeletionTarget(null);
+                    }
+                }}
+            >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>
+                            Delete{' '}
+                            {deletionTarget?.kind === 'incidentType'
+                                ? 'incident type'
+                                : 'subcategory'}
+                            ?
+                        </DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to delete{' '}
+                            <span className="font-medium text-foreground">
+                                {'"'}
+                                {deletionTarget?.kind === 'incidentType'
+                                    ? deletionTarget.incidentType.name
+                                    : deletionTarget?.subcategory.name}
+                                {'"'}
+                            </span>
+                            ?{' '}
+                            {deletionTarget?.kind === 'incidentType'
+                                ? 'All of its subcategories and forms will also be permanently deleted.'
+                                : 'Its form will also be permanently deleted.'}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={deletionProcessing}
+                            onClick={() => setDeletionTarget(null)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            disabled={deletionProcessing}
+                            onClick={confirmDeletion}
+                        >
+                            <Trash2 />
+                            {deletionProcessing ? 'Deleting...' : 'Delete'}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </>

@@ -96,6 +96,27 @@ test('administrators can search and paginate saved forms and open an assignment'
         );
 });
 
+test('saved forms can be filtered by incident type without selecting a subcategory', function () {
+    $selectedIncidentType = IncidentType::factory()->create(['name' => 'Fire']);
+    $selectedSubcategory = IncidentSubcategory::factory()
+        ->for($selectedIncidentType)
+        ->create(['name' => 'Structural fire']);
+    IncidentForm::factory()->for($selectedSubcategory, 'subcategory')->create();
+
+    IncidentForm::factory()->create();
+
+    $this->actingAs(administrator())
+        ->get(route('form-management.index', [
+            'incident_type' => $selectedIncidentType->id,
+        ]))
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('savedForms.data', 1)
+            ->where('savedForms.data.0.incident_type_id', $selectedIncidentType->id)
+            ->where('selection.incident_type_id', $selectedIncidentType->id)
+            ->where('selection.subcategory_id', null)
+        );
+});
+
 test('administrators can create and rename incident types and subcategories', function () {
     $administrator = administrator();
 

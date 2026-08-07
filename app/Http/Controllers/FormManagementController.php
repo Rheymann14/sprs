@@ -31,6 +31,7 @@ class FormManagementController extends Controller
         $selectedIncidentTypeId = $request->string('incident_type')->toString();
         $selectedSubcategoryId = $request->string('subcategory')->toString();
         $selectedIncidentType = $incidentTypes->firstWhere('id', $selectedIncidentTypeId);
+        $hasValidIncidentType = $selectedIncidentType !== null;
         $hasValidSelection = $selectedIncidentType?->subcategories
             ->contains('id', $selectedSubcategoryId) ?? false;
 
@@ -42,6 +43,11 @@ class FormManagementController extends Controller
                     'subcategory:id,incident_type_id,name',
                     'subcategory.incidentType:id,name',
                 ])
+                ->when($hasValidIncidentType, function (Builder $query) use ($selectedIncidentTypeId): void {
+                    $query->whereHas('subcategory', function (Builder $subcategoryQuery) use ($selectedIncidentTypeId): void {
+                        $subcategoryQuery->where('incident_type_id', $selectedIncidentTypeId);
+                    });
+                })
                 ->when($search !== '', function (Builder $query) use ($search): void {
                     $query->whereHas('subcategory', function (Builder $subcategoryQuery) use ($search): void {
                         $subcategoryQuery
@@ -67,7 +73,7 @@ class FormManagementController extends Controller
                 'search' => $search,
             ],
             'selection' => [
-                'incident_type_id' => $hasValidSelection ? $selectedIncidentTypeId : null,
+                'incident_type_id' => $hasValidIncidentType ? $selectedIncidentTypeId : null,
                 'subcategory_id' => $hasValidSelection ? $selectedSubcategoryId : null,
             ],
             'fieldTypes' => collect(FormFieldType::cases())->map(fn (FormFieldType $type): array => [

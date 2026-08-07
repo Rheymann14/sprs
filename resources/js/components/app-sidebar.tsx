@@ -1,4 +1,4 @@
-import { Link } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import { BookOpen, FolderGit2, LayoutGrid } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
@@ -17,6 +17,7 @@ import { dashboard } from '@/routes';
 import type { NavItem } from '@/types';
 
 export function AppSidebar() {
+    const { auth } = usePage().props;
     const dashboardUrl = dashboard();
 
     const mainNavItems: NavItem[] = [
@@ -55,7 +56,10 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={mainNavItems} />
+                <NavMain
+                    items={mainNavItems}
+                    label={auth.user.region?.name ?? 'Region'}
+                />
             </SidebarContent>
 
             <SidebarFooter>

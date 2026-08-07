@@ -57,19 +57,23 @@ test('administrators can create and rename incident types and subcategories', fu
 
     $this->actingAs($administrator)
         ->post(route('incident-types.store'), ['name' => 'Medical'])
-        ->assertRedirect(route('form-management.index'));
+        ->assertRedirect(route('form-management.index'))
+        ->assertInertiaFlash('toast.type', 'success')
+        ->assertInertiaFlash('toast.message', 'Incident type created.');
 
     $incidentType = IncidentType::query()->where('name', 'Medical')->firstOrFail();
 
     $this->actingAs($administrator)
         ->put(route('incident-types.update', $incidentType), ['name' => 'Medical Emergency'])
-        ->assertRedirect(route('form-management.index'));
+        ->assertRedirect(route('form-management.index'))
+        ->assertInertiaFlash('toast.message', 'Incident type updated.');
 
     $this->actingAs($administrator)
         ->post(route('incident-types.subcategories.store', $incidentType), [
             'names' => ['Trauma', 'Cardiac emergency'],
         ])
-        ->assertRedirect(route('form-management.index'));
+        ->assertRedirect(route('form-management.index'))
+        ->assertInertiaFlash('toast.message', 'Subcategories created.');
 
     $subcategory = $incidentType->subcategories()->where('name', 'Trauma')->firstOrFail();
 
@@ -77,7 +81,8 @@ test('administrators can create and rename incident types and subcategories', fu
         ->put(route('incident-types.subcategories.update', [$incidentType, $subcategory]), [
             'name' => 'Major trauma',
         ])
-        ->assertRedirect(route('form-management.index'));
+        ->assertRedirect(route('form-management.index'))
+        ->assertInertiaFlash('toast.message', 'Subcategory updated.');
 
     expect($incidentType->refresh()->name)->toBe('Medical Emergency')
         ->and($subcategory->refresh()->name)->toBe('Major trauma')
@@ -132,7 +137,9 @@ test('administrators can save a dynamic form into normalized tables', function (
             ],
         ]);
 
-    $response->assertRedirect(route('form-management.index'));
+    $response->assertRedirect(route('form-management.index'))
+        ->assertInertiaFlash('toast.type', 'success')
+        ->assertInertiaFlash('toast.message', 'Form saved.');
 
     $form = IncidentForm::query()->with('sections.fields.options')->firstOrFail();
 
@@ -179,6 +186,39 @@ test('dropdown and radio fields require at least two options', function (string 
     FormFieldType::Dropdown->value,
     FormFieldType::Radio->value,
 ]);
+
+test('form validation messages use plain language', function () {
+    $subcategory = IncidentSubcategory::factory()->create();
+
+    $this->actingAs(administrator())
+        ->put(route('incident-subcategories.form.update', $subcategory), [
+            'title' => '',
+            'description' => null,
+            'sections' => [
+                [
+                    'client_key' => Str::uuid()->toString(),
+                    'title' => '',
+                    'description' => null,
+                    'fields' => [
+                        [
+                            'client_key' => Str::uuid()->toString(),
+                            'type' => FormFieldType::Text->value,
+                            'label' => '',
+                            'description' => null,
+                            'placeholder' => null,
+                            'is_required' => false,
+                            'options' => [],
+                        ],
+                    ],
+                ],
+            ],
+        ])
+        ->assertSessionHasErrors([
+            'title' => 'Enter a form title.',
+            'sections.0.title' => 'Enter a title for each section.',
+            'sections.0.fields.0.label' => 'Enter a label for each field.',
+        ]);
+});
 
 test('scoped subcategory routes reject a subcategory from another incident type', function () {
     $firstType = IncidentType::factory()->create();

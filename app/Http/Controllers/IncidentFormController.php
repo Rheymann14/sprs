@@ -8,6 +8,7 @@ use App\Models\IncidentSubcategory;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Inertia\Inertia;
 
 class IncidentFormController extends Controller
 {
@@ -54,6 +55,8 @@ class IncidentFormController extends Controller
                 }
             }
         });
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Form saved.')]);
 
         return to_route('form-management.index');
     }

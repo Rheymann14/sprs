@@ -1,5 +1,6 @@
 import { Check, ChevronsUpDown, Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ComponentType } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -7,6 +8,7 @@ import { cn } from '@/lib/utils';
 export type CommandOption = {
     value: string;
     label: string;
+    icon?: ComponentType<{ className?: string }>;
 };
 
 type SearchableCommandProps = {
@@ -32,6 +34,7 @@ export function SearchableCommand({
     const [search, setSearch] = useState('');
     const rootRef = useRef<HTMLDivElement>(null);
     const selectedOption = options.find((option) => option.value === value);
+    const SelectedIcon = selectedOption?.icon;
     const filteredOptions = useMemo(
         () =>
             options.filter((option) =>
@@ -66,13 +69,18 @@ export function SearchableCommand({
                 className="w-full justify-between font-normal"
                 onClick={() => setOpen((current) => !current)}
             >
-                <span
-                    className={cn(
-                        'truncate',
-                        !selectedOption && 'text-muted-foreground',
+                <span className="flex min-w-0 items-center gap-2">
+                    {SelectedIcon && (
+                        <SelectedIcon className="size-4 shrink-0 text-muted-foreground" />
                     )}
-                >
-                    {selectedOption?.label ?? placeholder}
+                    <span
+                        className={cn(
+                            'truncate',
+                            !selectedOption && 'text-muted-foreground',
+                        )}
+                    >
+                        {selectedOption?.label ?? placeholder}
+                    </span>
                 </span>
                 <ChevronsUpDown className="opacity-50" />
             </Button>
@@ -103,32 +111,39 @@ export function SearchableCommand({
                                 {emptyMessage}
                             </p>
                         ) : (
-                            filteredOptions.map((option) => (
-                                <button
-                                    key={option.value}
-                                    type="button"
-                                    role="option"
-                                    aria-selected={value === option.value}
-                                    className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm outline-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent"
-                                    onClick={() => {
-                                        onValueChange(option.value);
-                                        setOpen(false);
-                                        setSearch('');
-                                    }}
-                                >
-                                    <Check
-                                        className={cn(
-                                            'size-4',
-                                            value === option.value
-                                                ? 'opacity-100'
-                                                : 'opacity-0',
+                            filteredOptions.map((option) => {
+                                const OptionIcon = option.icon;
+
+                                return (
+                                    <button
+                                        key={option.value}
+                                        type="button"
+                                        role="option"
+                                        aria-selected={value === option.value}
+                                        className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm outline-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent"
+                                        onClick={() => {
+                                            onValueChange(option.value);
+                                            setOpen(false);
+                                            setSearch('');
+                                        }}
+                                    >
+                                        <Check
+                                            className={cn(
+                                                'size-4',
+                                                value === option.value
+                                                    ? 'opacity-100'
+                                                    : 'opacity-0',
+                                            )}
+                                        />
+                                        {OptionIcon && (
+                                            <OptionIcon className="size-4 shrink-0 text-muted-foreground" />
                                         )}
-                                    />
-                                    <span className="truncate">
-                                        {option.label}
-                                    </span>
-                                </button>
-                            ))
+                                        <span className="truncate">
+                                            {option.label}
+                                        </span>
+                                    </button>
+                                );
+                            })
                         )}
                     </div>
                 </div>

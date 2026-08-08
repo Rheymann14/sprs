@@ -25,6 +25,7 @@ export type User = {
 export type Auth = {
     user: User;
     permissions: {
+        manage_forms: boolean;
         manage_users: boolean;
     };
 };

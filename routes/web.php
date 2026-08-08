@@ -6,8 +6,10 @@ use App\Http\Controllers\IncidentFormController;
 use App\Http\Controllers\IncidentStatusController;
 use App\Http\Controllers\IncidentSubcategoryController;
 use App\Http\Controllers\IncidentTypeController;
+use App\Http\Controllers\RegionController;
 use App\Http\Controllers\StatisticsController;
 use App\Http\Controllers\UserManagementController;
+use App\Http\Controllers\UserRoleController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
@@ -56,6 +58,19 @@ Route::middleware(['auth', 'verified', 'can:manage-users'])->group(function () {
         ->name('user-management.update');
     Route::delete('user-management/{user}', [UserManagementController::class, 'destroy'])
         ->name('user-management.destroy');
+
+    Route::middleware('can:manage-user-directories')->group(function () {
+        Route::post('user-management/roles', [UserRoleController::class, 'store'])
+            ->name('user-management.roles.store');
+        Route::put('user-management/roles/{user_role}', [UserRoleController::class, 'update'])
+            ->name('user-management.roles.update');
+        Route::delete('user-management/roles/{user_role}', [UserRoleController::class, 'destroy'])
+            ->name('user-management.roles.destroy');
+        Route::post('user-management/regions', [RegionController::class, 'store'])
+            ->name('user-management.regions.store');
+        Route::delete('user-management/regions/{region}', [RegionController::class, 'destroy'])
+            ->name('user-management.regions.destroy');
+    });
 });
 
 require __DIR__.'/settings.php';

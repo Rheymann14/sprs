@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\UserRoleGroup;
 use App\Models\Region;
 use App\Models\User;
 use App\Models\UserRole;
@@ -38,9 +39,190 @@ test('user managers can view users, role groups and regions', function () {
             ->where('roleGroups.0.options.0.label', 'Super Admin')
             ->where('roleGroups.1.label', 'CHED Regional Office')
             ->where('roleGroups.2.options.0.label', 'Agency')
+            ->where('roleGroupOptions.0.value', UserRoleGroup::CentralOffice->value)
+            ->where('roleGroupOptions.1.value', UserRoleGroup::RegionalOffice->value)
+            ->where('roleGroupOptions.2.value', UserRoleGroup::Agency->value)
+            ->where('canManageDirectories', true)
+            ->has('roles.data', 1)
+            ->where('roles.data.0.name', 'Super Admin')
+            ->where('roles.data.0.group', 'CHED Central Office')
+            ->where('roles.data.0.users_count', 1)
+            ->where('roles.data.0.can_delete', false)
             ->where('regions.0.id', $region->id)
             ->where('regions.0.name', 'Region IV-A')
+            ->where('regions.0.users_count', 1)
+            ->has('managedRegions.data', 1)
+            ->where('managedRegions.data.0.name', 'Region IV-A')
         );
+});
+
+test('role and region management are only available to super admins', function () {
+    $manager = userManager(UserRole::CentralOfficeAdministrator);
+
+    $this->actingAs($manager)
+        ->get(route('user-management.index', ['tab' => 'roles']))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('canManageDirectories', false)
+            ->where('filters.tab', 'users')
+            ->where('roles', null)
+            ->where('managedRegions', null)
+        );
+
+    $this->actingAs($manager)
+        ->post(route('user-management.roles.store'), [
+            'display_name' => 'Data Officer',
+            'organization_group' => UserRoleGroup::Agency->value,
+        ])
+        ->assertForbidden();
+
+    $this->actingAs($manager)
+        ->post(route('user-management.regions.store'), ['name' => 'Region Test'])
+        ->assertForbidden();
+});
+
+test('super admins can search and paginate roles and regions independently', function () {
+    $manager = userManager();
+
+    foreach (range(1, 12) as $index) {
+        UserRole::query()->create(['name' => "custom-role-{$index}"]);
+        Region::factory()->create(['name' => "Test Region {$index}"]);
+    }
+
+    $this->actingAs($manager)
+        ->get(route('user-management.index', ['tab' => 'roles', 'roles_page' => 2]))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('filters.tab', 'roles')
+            ->where('roles.current_page', 2)
+            ->where('roles.total', 13)
+            ->has('roles.data', 3)
+        );
+
+    $this->actingAs($manager)
+        ->get(route('user-management.index', ['tab' => 'roles', 'role_search' => 'Custom Role 12']))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('filters.role_search', 'Custom Role 12')
+            ->where('roles.total', 1)
+            ->where('roles.data.0.name', 'Custom Role 12')
+        );
+
+    $this->actingAs($manager)
+        ->get(route('user-management.index', ['tab' => 'regions', 'region_search' => 'Test Region 12']))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('filters.region_search', 'Test Region 12')
+            ->where('managedRegions.total', 1)
+            ->where('managedRegions.data.0.name', 'Test Region 12')
+        );
+});
+
+test('super admins can create edit and delete custom roles', function () {
+    $manager = userManager();
+
+    $this->actingAs($manager)
+        ->post(route('user-management.roles.store'), [
+            'display_name' => 'Data Officer',
+            'organization_group' => UserRoleGroup::CentralOffice->value,
+        ])
+        ->assertRedirect(route('user-management.index', ['tab' => 'roles']))
+        ->assertInertiaFlash('toast.message', 'Role created.');
+
+    $role = UserRole::query()->where('name', 'data-officer')->firstOrFail();
+
+    expect($role)
+        ->display_name->toBe('Data Officer')
+        ->organization_group->toBe(UserRoleGroup::CentralOffice)
+        ->is_system->toBeFalse();
+
+    $this->actingAs($manager)
+        ->get(route('user-management.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('roleGroups.0.options.3.value', 'data-officer')
+            ->where('roleGroups.0.options.3.label', 'Data Officer')
+        );
+
+    $this->actingAs($manager)
+        ->put(route('user-management.roles.update', $role), [
+            'display_name' => 'Senior Data Officer',
+            'organization_group' => UserRoleGroup::RegionalOffice->value,
+        ])
+        ->assertRedirect(route('user-management.index', ['tab' => 'roles']))
+        ->assertInertiaFlash('toast.message', 'Role updated.');
+
+    $role->refresh();
+
+    expect($role)
+        ->name->toBe('data-officer')
+        ->display_name->toBe('Senior Data Officer')
+        ->organization_group->toBe(UserRoleGroup::RegionalOffice);
+
+    $this->actingAs($manager)
+        ->get(route('user-management.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('roleGroups.1.options.2.value', 'data-officer')
+            ->where('roleGroups.1.options.2.label', 'Senior Data Officer')
+        );
+
+    $this->actingAs($manager)
+        ->delete(route('user-management.roles.destroy', $role))
+        ->assertRedirect(route('user-management.index', ['tab' => 'roles']))
+        ->assertInertiaFlash('toast.message', 'Role deleted.');
+
+    $this->assertModelMissing($role);
+});
+
+test('built-in and assigned roles cannot be deleted', function () {
+    $manager = userManager();
+    $assignedRole = UserRole::query()->create(['name' => 'assigned-custom-role']);
+    User::factory()->for($assignedRole, 'userRole')->for($manager->region)->create();
+
+    $this->actingAs($manager)
+        ->delete(route('user-management.roles.destroy', $manager->userRole))
+        ->assertSessionHasErrors('role');
+
+    $this->actingAs($manager)
+        ->delete(route('user-management.roles.destroy', $assignedRole))
+        ->assertSessionHasErrors('role');
+
+    $this->assertModelExists($manager->userRole);
+    $this->assertModelExists($assignedRole);
+});
+
+test('built-in roles cannot be edited', function () {
+    $manager = userManager();
+
+    $this->actingAs($manager)
+        ->put(route('user-management.roles.update', $manager->userRole), [
+            'display_name' => 'Renamed Super Admin',
+            'organization_group' => UserRoleGroup::Agency->value,
+        ])
+        ->assertForbidden();
+
+    expect($manager->userRole->refresh())
+        ->display_name->toBe('Super Admin')
+        ->organization_group->toBe(UserRoleGroup::CentralOffice);
+});
+
+test('super admins can create and safely delete regions', function () {
+    $manager = userManager();
+
+    $this->actingAs($manager)
+        ->post(route('user-management.regions.store'), ['name' => '  Region   Test  '])
+        ->assertRedirect(route('user-management.index', ['tab' => 'regions']))
+        ->assertInertiaFlash('toast.message', 'Region created.');
+
+    $region = Region::query()->where('name', 'Region Test')->firstOrFail();
+
+    $this->actingAs($manager)
+        ->delete(route('user-management.regions.destroy', $region))
+        ->assertRedirect(route('user-management.index', ['tab' => 'regions']))
+        ->assertInertiaFlash('toast.message', 'Region deleted.');
+
+    $this->assertModelMissing($region);
+
+    $this->actingAs($manager)
+        ->delete(route('user-management.regions.destroy', $manager->region))
+        ->assertSessionHasErrors('region');
+
+    $this->assertModelExists($manager->region);
 });
 
 test('users can be searched and paginated', function () {

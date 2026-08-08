@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\UserRoleGroup;
 use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Models\Region;
@@ -20,19 +21,40 @@ class UserManagementController extends Controller
     public function index(Request $request): Response
     {
         $search = $request->string('search')->trim()->toString();
+        $roleSearch = $request->string('role_search')->trim()->toString();
+        $regionSearch = $request->string('region_search')->trim()->toString();
         $regionId = $request->user()?->region_id;
-        $roleLabels = collect(UserRole::assignmentGroups())
+        $canManageDirectories = $request->user()?->can('manage-user-directories') ?? false;
+        $requestedTab = $request->string('tab')->toString();
+        $activeTab = $canManageDirectories && in_array($requestedTab, ['roles', 'regions'], true)
+            ? $requestedTab
+            : 'users';
+        $assignmentGroups = UserRole::assignmentGroups();
+        $customRoles = UserRole::query()
+            ->select('name', 'display_name', 'organization_group')
+            ->where('is_system', false)
+            ->orderBy('display_name')
+            ->get();
+
+        foreach ($customRoles as $customRole) {
+            $assignmentGroups[$customRole->organization_group->label()][$customRole->name] = $customRole->display_name;
+        }
+
+        $roleLabels = collect($assignmentGroups)
             ->flatMap(fn (array $roles): array => $roles)
             ->put(UserRole::Administrator, 'Administrator');
         $matchingRoleNames = $roleLabels
             ->filter(fn (string $label): bool => Str::contains(Str::lower($label), Str::lower($search)))
+            ->keys();
+        $matchingManagedRoleNames = $roleLabels
+            ->filter(fn (string $label): bool => Str::contains(Str::lower($label), Str::lower($roleSearch)))
             ->keys();
 
         return Inertia::render('user-management/index', [
             'users' => User::query()
                 ->select('id', 'name', 'email', 'user_role_id', 'region_id', 'created_at')
                 ->where('region_id', $regionId)
-                ->with(['userRole:id,name', 'region:id,name'])
+                ->with(['userRole:id,name,display_name', 'region:id,name'])
                 ->when($search !== '', function (Builder $query) use ($matchingRoleNames, $search): void {
                     $query->where(function (Builder $searchQuery) use ($matchingRoleNames, $search): void {
                         $searchQuery
@@ -56,7 +78,7 @@ class UserManagementController extends Controller
                     'name' => $user->name,
                     'email' => $user->email,
                     'role' => $user->userRole
-                        ? $roleLabels->get($user->userRole->name, Str::headline($user->userRole->name))
+                        ? $user->userRole->display_name
                         : 'Unassigned',
                     'role_value' => $user->userRole?->name ?? '',
                     'region' => $user->region?->name ?? 'Unassigned',
@@ -67,8 +89,17 @@ class UserManagementController extends Controller
                 ]),
             'filters' => [
                 'search' => $search,
+                'role_search' => $roleSearch,
+                'region_search' => $regionSearch,
+                'tab' => $activeTab,
             ],
-            'roleGroups' => collect(UserRole::assignmentGroups())
+            'canManageDirectories' => $canManageDirectories,
+            'roleGroupOptions' => collect(UserRoleGroup::cases())
+                ->map(fn (UserRoleGroup $group): array => [
+                    'value' => $group->value,
+                    'label' => $group->label(),
+                ]),
+            'roleGroups' => collect($assignmentGroups)
                 ->map(fn (array $roles, string $group): array => [
                     'label' => $group,
                     'options' => collect($roles)
@@ -79,11 +110,54 @@ class UserManagementController extends Controller
                         ->values(),
                 ])
                 ->values(),
+            'roles' => fn () => $canManageDirectories
+                ? UserRole::query()
+                    ->select('id', 'name', 'display_name', 'organization_group', 'is_system', 'created_at')
+                    ->withCount('users')
+                    ->when($roleSearch !== '', function (Builder $query) use ($matchingManagedRoleNames, $roleSearch): void {
+                        $query->where(function (Builder $searchQuery) use ($matchingManagedRoleNames, $roleSearch): void {
+                            $searchQuery
+                                ->where('name', 'like', "%{$roleSearch}%")
+                                ->orWhere('display_name', 'like', "%{$roleSearch}%")
+                                ->orWhereIn('name', $matchingManagedRoleNames);
+                        });
+                    })
+                    ->orderBy('name')
+                    ->paginate(10, ['*'], 'roles_page')
+                    ->withQueryString()
+                    ->through(fn (UserRole $role): array => [
+                        'id' => $role->id,
+                        'name' => $role->display_name,
+                        'organization_group' => $role->organization_group->value,
+                        'group' => $role->organization_group->label(),
+                        'users_count' => $role->users_count,
+                        'can_edit' => ! $role->is_system,
+                        'can_delete' => ! $role->is_system && $role->users_count === 0,
+                    ])
+                : null,
             'regions' => Region::query()
                 ->select('id', 'name')
                 ->whereKey($regionId)
+                ->withCount('users')
                 ->orderBy('name')
                 ->get(),
+            'managedRegions' => fn () => $canManageDirectories
+                ? Region::query()
+                    ->select('id', 'name', 'created_at')
+                    ->withCount(['users', 'incidents', 'incidentForms'])
+                    ->when($regionSearch !== '', fn (Builder $query) => $query->where('name', 'like', "%{$regionSearch}%"))
+                    ->orderBy('name')
+                    ->paginate(10, ['*'], 'regions_page')
+                    ->withQueryString()
+                    ->through(fn (Region $region): array => [
+                        'id' => $region->id,
+                        'name' => $region->name,
+                        'users_count' => $region->users_count,
+                        'can_delete' => $region->users_count === 0
+                            && $region->incidents_count === 0
+                            && $region->incident_forms_count === 0,
+                    ])
+                : null,
         ]);
     }
 

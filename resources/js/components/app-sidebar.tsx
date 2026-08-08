@@ -44,7 +44,7 @@ export function AppSidebar() {
             href: incidentsUrl,
             icon: Siren,
         },
-        ...(auth.user.user_role?.name === 'administrator'
+        ...(auth.permissions.manage_forms
             ? [
                   {
                       title: 'Form Management',

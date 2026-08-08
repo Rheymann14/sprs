@@ -5,8 +5,11 @@ import {
     ChevronRight,
     Mail,
     MapPin,
+    MapPinned,
     Pencil,
+    Plus,
     Search,
+    ShieldCheck,
     Trash2,
     UserPlus,
     Users,
@@ -14,11 +17,20 @@ import {
 import type { FormEvent } from 'react';
 import { useMemo, useState } from 'react';
 import {
+    destroy as destroyRegion,
+    store as storeRegion,
+} from '@/actions/App/Http/Controllers/RegionController';
+import {
     destroy,
     index as userManagement,
     store,
     update,
 } from '@/actions/App/Http/Controllers/UserManagementController';
+import {
+    destroy as destroyRole,
+    store as storeRole,
+    update as updateRole,
+} from '@/actions/App/Http/Controllers/UserRoleController';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
@@ -57,6 +69,21 @@ type RoleGroup = {
 type Region = {
     id: string;
     name: string;
+    users_count: number;
+};
+
+type ManagedRole = {
+    id: string;
+    name: string;
+    group: string;
+    organization_group: string;
+    users_count: number;
+    can_edit: boolean;
+    can_delete: boolean;
+};
+
+type ManagedRegion = Region & {
+    can_delete: boolean;
 };
 
 type ManagedUser = {
@@ -81,26 +108,60 @@ type PaginatedUsers = {
     total: number;
 };
 
+type PaginatedDirectory<T> = {
+    data: T[];
+    current_page: number;
+    last_page: number;
+    from: number | null;
+    to: number | null;
+    total: number;
+};
+
 type UserManagementProps = {
     users: PaginatedUsers;
     filters: {
         search: string;
+        role_search: string;
+        region_search: string;
+        tab: ManagementTab;
     };
+    canManageDirectories: boolean;
     roleGroups: RoleGroup[];
+    roleGroupOptions: CommandOption[];
+    roles: PaginatedDirectory<ManagedRole> | null;
     regions: Region[];
+    managedRegions: PaginatedDirectory<ManagedRegion> | null;
 };
+
+type ManagementTab = 'users' | 'roles' | 'regions';
 
 export default function UserManagement({
     users,
     filters,
+    canManageDirectories,
     roleGroups,
+    roleGroupOptions,
+    roles,
     regions,
+    managedRegions,
 }: UserManagementProps) {
     const getInitials = useInitials();
     const [addUserOpen, setAddUserOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
     const [deletingUser, setDeletingUser] = useState<ManagedUser | null>(null);
     const [searchQuery, setSearchQuery] = useState(filters.search);
+    const [activeTab, setActiveTab] = useState<ManagementTab>(filters.tab);
+    const [roleSearchQuery, setRoleSearchQuery] = useState(filters.role_search);
+    const [regionSearchQuery, setRegionSearchQuery] = useState(
+        filters.region_search,
+    );
+    const [addRoleOpen, setAddRoleOpen] = useState(false);
+    const [editingRole, setEditingRole] = useState<ManagedRole | null>(null);
+    const [addRegionOpen, setAddRegionOpen] = useState(false);
+    const [deletingRole, setDeletingRole] = useState<ManagedRole | null>(null);
+    const [deletingRegion, setDeletingRegion] = useState<ManagedRegion | null>(
+        null,
+    );
     const form = useForm({
         name: '',
         email: '',
@@ -116,6 +177,17 @@ export default function UserManagement({
         region_id: '',
     });
     const deletionForm = useForm({});
+    const roleForm = useForm({
+        display_name: '',
+        organization_group: '',
+    });
+    const editRoleForm = useForm({
+        display_name: '',
+        organization_group: '',
+    });
+    const regionForm = useForm({ name: '' });
+    const roleDeletionForm = useForm<{ role?: string }>({});
+    const regionDeletionForm = useForm<{ region?: string }>({});
     const roleOptions = useMemo<CommandOption[]>(
         () =>
             roleGroups.flatMap((group) =>
@@ -229,6 +301,143 @@ export default function UserManagement({
         });
     };
 
+    const searchRoles = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        router.get(
+            userManagement.url({
+                query: {
+                    tab: 'roles',
+                    search: filters.search || undefined,
+                    role_search: roleSearchQuery.trim() || undefined,
+                    region_search: filters.region_search || undefined,
+                },
+            }),
+            {},
+            {
+                only: ['roles', 'filters'],
+                preserveScroll: true,
+                preserveState: true,
+                replace: true,
+            },
+        );
+    };
+
+    const clearRoleSearch = () => {
+        setRoleSearchQuery('');
+        router.get(
+            userManagement.url({ query: { tab: 'roles' } }),
+            {},
+            {
+                only: ['roles', 'filters'],
+                preserveScroll: true,
+                preserveState: true,
+                replace: true,
+            },
+        );
+    };
+
+    const searchRegions = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        router.get(
+            userManagement.url({
+                query: {
+                    tab: 'regions',
+                    search: filters.search || undefined,
+                    role_search: filters.role_search || undefined,
+                    region_search: regionSearchQuery.trim() || undefined,
+                },
+            }),
+            {},
+            {
+                only: ['managedRegions', 'filters'],
+                preserveScroll: true,
+                preserveState: true,
+                replace: true,
+            },
+        );
+    };
+
+    const clearRegionSearch = () => {
+        setRegionSearchQuery('');
+        router.get(
+            userManagement.url({ query: { tab: 'regions' } }),
+            {},
+            {
+                only: ['managedRegions', 'filters'],
+                preserveScroll: true,
+                preserveState: true,
+                replace: true,
+            },
+        );
+    };
+
+    const submitRole = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        roleForm.post(storeRole.url(), {
+            onSuccess: () => {
+                roleForm.reset();
+                setAddRoleOpen(false);
+            },
+        });
+    };
+
+    const openEditRoleDialog = (role: ManagedRole) => {
+        editRoleForm.setData({
+            display_name: role.name,
+            organization_group: role.organization_group,
+        });
+        editRoleForm.clearErrors();
+        setEditingRole(role);
+    };
+
+    const submitRoleEdit = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+
+        if (!editingRole) {
+            return;
+        }
+
+        editRoleForm.put(updateRole.url(editingRole.id), {
+            preserveScroll: true,
+            onSuccess: () => {
+                editRoleForm.reset();
+                setEditingRole(null);
+            },
+        });
+    };
+
+    const submitRegion = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        regionForm.post(storeRegion.url(), {
+            onSuccess: () => {
+                regionForm.reset();
+                setAddRegionOpen(false);
+            },
+        });
+    };
+
+    const confirmRoleDeletion = () => {
+        if (!deletingRole) {
+            return;
+        }
+
+        roleDeletionForm.delete(destroyRole.url(deletingRole.id), {
+            preserveScroll: true,
+            onSuccess: () => setDeletingRole(null),
+        });
+    };
+
+    const confirmRegionDeletion = () => {
+        if (!deletingRegion) {
+            return;
+        }
+
+        regionDeletionForm.delete(destroyRegion.url(deletingRegion.id), {
+            preserveScroll: true,
+            onSuccess: () => setDeletingRegion(null),
+        });
+    };
+
     return (
         <>
             <Head title="User Management" />
@@ -239,12 +448,72 @@ export default function UserManagement({
                         title="User Management"
                         description="Search accounts and manage organizational assignments."
                     />
-                    <Button onClick={() => setAddUserOpen(true)}>
-                        <UserPlus /> Add user
-                    </Button>
+                    {activeTab === 'users' && (
+                        <Button onClick={() => setAddUserOpen(true)}>
+                            <UserPlus /> Add user
+                        </Button>
+                    )}
+                    {activeTab === 'roles' && canManageDirectories && (
+                        <Button onClick={() => setAddRoleOpen(true)}>
+                            <Plus /> Add role
+                        </Button>
+                    )}
+                    {activeTab === 'regions' && canManageDirectories && (
+                        <Button onClick={() => setAddRegionOpen(true)}>
+                            <Plus /> Add region
+                        </Button>
+                    )}
                 </div>
 
-                <Card>
+                {canManageDirectories && (
+                    <div
+                        role="tablist"
+                        aria-label="User management sections"
+                        className="grid w-full grid-cols-3 gap-1 rounded-xl border bg-muted/40 p-1 sm:w-fit"
+                    >
+                        <Button
+                            type="button"
+                            role="tab"
+                            variant={
+                                activeTab === 'users' ? 'secondary' : 'ghost'
+                            }
+                            aria-selected={activeTab === 'users'}
+                            className="min-w-0"
+                            onClick={() => setActiveTab('users')}
+                        >
+                            <Users />
+                            <span className="truncate">User</span>
+                        </Button>
+                        <Button
+                            type="button"
+                            role="tab"
+                            variant={
+                                activeTab === 'roles' ? 'secondary' : 'ghost'
+                            }
+                            aria-selected={activeTab === 'roles'}
+                            className="min-w-0"
+                            onClick={() => setActiveTab('roles')}
+                        >
+                            <ShieldCheck />
+                            <span className="truncate">Role</span>
+                        </Button>
+                        <Button
+                            type="button"
+                            role="tab"
+                            variant={
+                                activeTab === 'regions' ? 'secondary' : 'ghost'
+                            }
+                            aria-selected={activeTab === 'regions'}
+                            className="min-w-0"
+                            onClick={() => setActiveTab('regions')}
+                        >
+                            <MapPinned />
+                            <span className="truncate">Region</span>
+                        </Button>
+                    </div>
+                )}
+
+                <Card className={activeTab === 'users' ? undefined : 'hidden'}>
                     <CardHeader className="gap-4 sm:flex-row sm:items-end sm:justify-between">
                         <div className="space-y-1.5">
                             <div className="flex items-center gap-2">
@@ -619,7 +888,814 @@ export default function UserManagement({
                         )}
                     </CardContent>
                 </Card>
+
+                {activeTab === 'roles' && roles && (
+                    <Card>
+                        <CardHeader className="gap-4 sm:flex-row sm:items-end sm:justify-between">
+                            <div className="space-y-1.5">
+                                <div className="flex items-center gap-2">
+                                    <CardTitle>Role Management</CardTitle>
+                                    <Badge variant="secondary">
+                                        {roles.total}
+                                    </Badge>
+                                </div>
+                                <CardDescription>
+                                    Add custom roles and manage role
+                                    assignments.
+                                </CardDescription>
+                            </div>
+                            <form
+                                className="flex w-full flex-wrap gap-2 sm:w-auto"
+                                onSubmit={searchRoles}
+                            >
+                                <Input
+                                    type="search"
+                                    value={roleSearchQuery}
+                                    aria-label="Search roles"
+                                    placeholder="Search roles"
+                                    className="min-w-48 flex-1 sm:w-72"
+                                    onChange={(event) =>
+                                        setRoleSearchQuery(event.target.value)
+                                    }
+                                />
+                                <Button type="submit" variant="outline">
+                                    <Search />
+                                    <span className="sr-only sm:not-sr-only">
+                                        Search
+                                    </span>
+                                </Button>
+                                {filters.role_search && (
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={clearRoleSearch}
+                                    >
+                                        Clear
+                                    </Button>
+                                )}
+                            </form>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {roles.data.length > 0 ? (
+                                <>
+                                    <div className="overflow-hidden rounded-xl border">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full min-w-2xl text-sm">
+                                                <thead className="border-b bg-muted/50 text-left text-xs tracking-wide text-muted-foreground uppercase">
+                                                    <tr>
+                                                        <th className="px-5 py-3.5 font-medium">
+                                                            Role
+                                                        </th>
+                                                        <th className="px-5 py-3.5 font-medium">
+                                                            Organization
+                                                        </th>
+                                                        <th className="px-5 py-3.5 text-right font-medium">
+                                                            Users
+                                                        </th>
+                                                        <th className="px-5 py-3.5 text-right font-medium">
+                                                            Actions
+                                                        </th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y">
+                                                    {roles.data.map((role) => (
+                                                        <tr
+                                                            key={role.id}
+                                                            className="transition-colors hover:bg-muted/40"
+                                                        >
+                                                            <td className="px-5 py-4">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                                                        <ShieldCheck className="size-4" />
+                                                                    </div>
+                                                                    <span className="font-medium whitespace-nowrap">
+                                                                        {
+                                                                            role.name
+                                                                        }
+                                                                    </span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-5 py-4 text-muted-foreground">
+                                                                {role.group}
+                                                            </td>
+                                                            <td className="px-5 py-4 text-right">
+                                                                <Badge variant="secondary">
+                                                                    {
+                                                                        role.users_count
+                                                                    }
+                                                                </Badge>
+                                                            </td>
+                                                            <td className="px-5 py-4 text-right">
+                                                                <div className="flex justify-end gap-2">
+                                                                    <Button
+                                                                        type="button"
+                                                                        size="icon"
+                                                                        variant="outline"
+                                                                        disabled={
+                                                                            !role.can_edit
+                                                                        }
+                                                                        aria-label={`Edit ${role.name}`}
+                                                                        title={
+                                                                            role.can_edit
+                                                                                ? `Edit ${role.name}`
+                                                                                : 'Built-in roles cannot be edited'
+                                                                        }
+                                                                        onClick={() =>
+                                                                            openEditRoleDialog(
+                                                                                role,
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        <Pencil />
+                                                                    </Button>
+                                                                    <Button
+                                                                        type="button"
+                                                                        size="icon"
+                                                                        variant="outline"
+                                                                        disabled={
+                                                                            !role.can_delete
+                                                                        }
+                                                                        aria-label={`Delete ${role.name}`}
+                                                                        title={
+                                                                            role.can_delete
+                                                                                ? `Delete ${role.name}`
+                                                                                : 'Built-in or assigned roles cannot be deleted'
+                                                                        }
+                                                                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                                        onClick={() => {
+                                                                            roleDeletionForm.clearErrors();
+                                                                            setDeletingRole(
+                                                                                role,
+                                                                            );
+                                                                        }}
+                                                                    >
+                                                                        <Trash2 />
+                                                                    </Button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                                        <p>
+                                            Showing {roles.from}–{roles.to} of{' '}
+                                            {roles.total}
+                                        </p>
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                asChild={roles.current_page > 1}
+                                                size="sm"
+                                                variant="outline"
+                                                disabled={
+                                                    roles.current_page <= 1
+                                                }
+                                            >
+                                                {roles.current_page > 1 ? (
+                                                    <Link
+                                                        href={userManagement({
+                                                            query: {
+                                                                tab: 'roles',
+                                                                role_search:
+                                                                    filters.role_search ||
+                                                                    undefined,
+                                                                roles_page:
+                                                                    roles.current_page -
+                                                                    1,
+                                                            },
+                                                        })}
+                                                        only={[
+                                                            'roles',
+                                                            'filters',
+                                                        ]}
+                                                        preserveScroll
+                                                        preserveState
+                                                    >
+                                                        <ChevronLeft /> Previous
+                                                    </Link>
+                                                ) : (
+                                                    <>
+                                                        <ChevronLeft /> Previous
+                                                    </>
+                                                )}
+                                            </Button>
+                                            <span className="px-2 whitespace-nowrap">
+                                                Page {roles.current_page} of{' '}
+                                                {roles.last_page}
+                                            </span>
+                                            <Button
+                                                asChild={
+                                                    roles.current_page <
+                                                    roles.last_page
+                                                }
+                                                size="sm"
+                                                variant="outline"
+                                                disabled={
+                                                    roles.current_page >=
+                                                    roles.last_page
+                                                }
+                                            >
+                                                {roles.current_page <
+                                                roles.last_page ? (
+                                                    <Link
+                                                        href={userManagement({
+                                                            query: {
+                                                                tab: 'roles',
+                                                                role_search:
+                                                                    filters.role_search ||
+                                                                    undefined,
+                                                                roles_page:
+                                                                    roles.current_page +
+                                                                    1,
+                                                            },
+                                                        })}
+                                                        only={[
+                                                            'roles',
+                                                            'filters',
+                                                        ]}
+                                                        preserveScroll
+                                                        preserveState
+                                                    >
+                                                        Next <ChevronRight />
+                                                    </Link>
+                                                ) : (
+                                                    <>
+                                                        Next <ChevronRight />
+                                                    </>
+                                                )}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex min-h-56 flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-8 text-center">
+                                    <ShieldCheck className="size-8 text-muted-foreground" />
+                                    <div>
+                                        <p className="font-medium">
+                                            No roles found
+                                        </p>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            Try a different role name.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
+
+                {activeTab === 'regions' && managedRegions && (
+                    <Card>
+                        <CardHeader className="gap-4 sm:flex-row sm:items-end sm:justify-between">
+                            <div className="space-y-1.5">
+                                <div className="flex items-center gap-2">
+                                    <CardTitle>Region Management</CardTitle>
+                                    <Badge variant="secondary">
+                                        {managedRegions.total}
+                                    </Badge>
+                                </div>
+                                <CardDescription>
+                                    Add regions and review their assigned users.
+                                </CardDescription>
+                            </div>
+                            <form
+                                className="flex w-full flex-wrap gap-2 sm:w-auto"
+                                onSubmit={searchRegions}
+                            >
+                                <Input
+                                    type="search"
+                                    value={regionSearchQuery}
+                                    aria-label="Search regions"
+                                    placeholder="Search regions"
+                                    className="min-w-48 flex-1 sm:w-72"
+                                    onChange={(event) =>
+                                        setRegionSearchQuery(event.target.value)
+                                    }
+                                />
+                                <Button type="submit" variant="outline">
+                                    <Search />
+                                    <span className="sr-only sm:not-sr-only">
+                                        Search
+                                    </span>
+                                </Button>
+                                {filters.region_search && (
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={clearRegionSearch}
+                                    >
+                                        Clear
+                                    </Button>
+                                )}
+                            </form>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {managedRegions.data.length > 0 ? (
+                                <>
+                                    <div className="overflow-hidden rounded-xl border">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full min-w-lg text-sm">
+                                                <thead className="border-b bg-muted/50 text-left text-xs tracking-wide text-muted-foreground uppercase">
+                                                    <tr>
+                                                        <th className="px-5 py-3.5 font-medium">
+                                                            Region
+                                                        </th>
+                                                        <th className="px-5 py-3.5 text-right font-medium">
+                                                            Users
+                                                        </th>
+                                                        <th className="px-5 py-3.5 text-right font-medium">
+                                                            Actions
+                                                        </th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y">
+                                                    {managedRegions.data.map(
+                                                        (region) => (
+                                                            <tr
+                                                                key={region.id}
+                                                                className="transition-colors hover:bg-muted/40"
+                                                            >
+                                                                <td className="px-5 py-4">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                                                            <MapPin className="size-4" />
+                                                                        </div>
+                                                                        <span className="font-medium">
+                                                                            {
+                                                                                region.name
+                                                                            }
+                                                                        </span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-5 py-4 text-right">
+                                                                    <Badge variant="secondary">
+                                                                        {
+                                                                            region.users_count
+                                                                        }
+                                                                    </Badge>
+                                                                </td>
+                                                                <td className="px-5 py-4 text-right">
+                                                                    <Button
+                                                                        type="button"
+                                                                        size="icon"
+                                                                        variant="outline"
+                                                                        disabled={
+                                                                            !region.can_delete
+                                                                        }
+                                                                        aria-label={`Delete ${region.name}`}
+                                                                        title={
+                                                                            region.can_delete
+                                                                                ? `Delete ${region.name}`
+                                                                                : 'Regions with assigned records cannot be deleted'
+                                                                        }
+                                                                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                                        onClick={() => {
+                                                                            regionDeletionForm.clearErrors();
+                                                                            setDeletingRegion(
+                                                                                region,
+                                                                            );
+                                                                        }}
+                                                                    >
+                                                                        <Trash2 />
+                                                                    </Button>
+                                                                </td>
+                                                            </tr>
+                                                        ),
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                                        <p>
+                                            Showing {managedRegions.from}–
+                                            {managedRegions.to} of{' '}
+                                            {managedRegions.total}
+                                        </p>
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                asChild={
+                                                    managedRegions.current_page >
+                                                    1
+                                                }
+                                                size="sm"
+                                                variant="outline"
+                                                disabled={
+                                                    managedRegions.current_page <=
+                                                    1
+                                                }
+                                            >
+                                                {managedRegions.current_page >
+                                                1 ? (
+                                                    <Link
+                                                        href={userManagement({
+                                                            query: {
+                                                                tab: 'regions',
+                                                                region_search:
+                                                                    filters.region_search ||
+                                                                    undefined,
+                                                                regions_page:
+                                                                    managedRegions.current_page -
+                                                                    1,
+                                                            },
+                                                        })}
+                                                        only={[
+                                                            'managedRegions',
+                                                            'filters',
+                                                        ]}
+                                                        preserveScroll
+                                                        preserveState
+                                                    >
+                                                        <ChevronLeft /> Previous
+                                                    </Link>
+                                                ) : (
+                                                    <>
+                                                        <ChevronLeft /> Previous
+                                                    </>
+                                                )}
+                                            </Button>
+                                            <span className="px-2 whitespace-nowrap">
+                                                Page{' '}
+                                                {managedRegions.current_page} of{' '}
+                                                {managedRegions.last_page}
+                                            </span>
+                                            <Button
+                                                asChild={
+                                                    managedRegions.current_page <
+                                                    managedRegions.last_page
+                                                }
+                                                size="sm"
+                                                variant="outline"
+                                                disabled={
+                                                    managedRegions.current_page >=
+                                                    managedRegions.last_page
+                                                }
+                                            >
+                                                {managedRegions.current_page <
+                                                managedRegions.last_page ? (
+                                                    <Link
+                                                        href={userManagement({
+                                                            query: {
+                                                                tab: 'regions',
+                                                                region_search:
+                                                                    filters.region_search ||
+                                                                    undefined,
+                                                                regions_page:
+                                                                    managedRegions.current_page +
+                                                                    1,
+                                                            },
+                                                        })}
+                                                        only={[
+                                                            'managedRegions',
+                                                            'filters',
+                                                        ]}
+                                                        preserveScroll
+                                                        preserveState
+                                                    >
+                                                        Next <ChevronRight />
+                                                    </Link>
+                                                ) : (
+                                                    <>
+                                                        Next <ChevronRight />
+                                                    </>
+                                                )}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex min-h-56 flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-8 text-center">
+                                    <MapPinned className="size-8 text-muted-foreground" />
+                                    <div>
+                                        <p className="font-medium">
+                                            No regions found
+                                        </p>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            Try a different region name.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
             </div>
+
+            <Dialog
+                open={addRoleOpen}
+                onOpenChange={(open) => {
+                    setAddRoleOpen(open);
+
+                    if (!open) {
+                        roleForm.resetAndClearErrors();
+                    }
+                }}
+            >
+                <DialogContent>
+                    <form onSubmit={submitRole} className="space-y-5">
+                        <DialogHeader>
+                            <DialogTitle>Add role</DialogTitle>
+                            <DialogDescription>
+                                Create a custom role that can be assigned to
+                                users.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-2">
+                            <Label htmlFor="role-name">Role name</Label>
+                            <Input
+                                id="role-name"
+                                autoFocus
+                                value={roleForm.data.display_name}
+                                aria-invalid={Boolean(
+                                    roleForm.errors.display_name,
+                                )}
+                                placeholder="Example: Data Officer"
+                                onChange={(event) =>
+                                    roleForm.setData(
+                                        'display_name',
+                                        event.target.value,
+                                    )
+                                }
+                            />
+                            <InputError
+                                message={roleForm.errors.display_name}
+                            />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>Organization group</Label>
+                            <SearchableCommand
+                                value={roleForm.data.organization_group}
+                                options={roleGroupOptions}
+                                placeholder="Select an organization group"
+                                searchPlaceholder="Search organization groups..."
+                                emptyMessage="No organization groups found."
+                                onValueChange={(value) =>
+                                    roleForm.setData(
+                                        'organization_group',
+                                        value,
+                                    )
+                                }
+                            />
+                            <InputError
+                                message={roleForm.errors.organization_group}
+                            />
+                        </div>
+                        <DialogFooter>
+                            <DialogClose asChild>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    disabled={roleForm.processing}
+                                >
+                                    Cancel
+                                </Button>
+                            </DialogClose>
+                            <Button
+                                type="submit"
+                                disabled={roleForm.processing}
+                            >
+                                <Plus />
+                                {roleForm.processing
+                                    ? 'Adding role...'
+                                    : 'Add role'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={editingRole !== null}
+                onOpenChange={(open) => {
+                    if (!open && !editRoleForm.processing) {
+                        setEditingRole(null);
+                        editRoleForm.resetAndClearErrors();
+                    }
+                }}
+            >
+                <DialogContent>
+                    <form onSubmit={submitRoleEdit} className="space-y-5">
+                        <DialogHeader>
+                            <DialogTitle>Edit role</DialogTitle>
+                            <DialogDescription>
+                                Update the role name or organization group. Its
+                                stable system identifier will not change.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-2">
+                            <Label htmlFor="edit-role-name">Role name</Label>
+                            <Input
+                                id="edit-role-name"
+                                autoFocus
+                                value={editRoleForm.data.display_name}
+                                aria-invalid={Boolean(
+                                    editRoleForm.errors.display_name,
+                                )}
+                                onChange={(event) =>
+                                    editRoleForm.setData(
+                                        'display_name',
+                                        event.target.value,
+                                    )
+                                }
+                            />
+                            <InputError
+                                message={editRoleForm.errors.display_name}
+                            />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>Organization group</Label>
+                            <SearchableCommand
+                                value={editRoleForm.data.organization_group}
+                                options={roleGroupOptions}
+                                placeholder="Select an organization group"
+                                searchPlaceholder="Search organization groups..."
+                                emptyMessage="No organization groups found."
+                                onValueChange={(value) =>
+                                    editRoleForm.setData(
+                                        'organization_group',
+                                        value,
+                                    )
+                                }
+                            />
+                            <InputError
+                                message={editRoleForm.errors.organization_group}
+                            />
+                        </div>
+                        <DialogFooter>
+                            <DialogClose asChild>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    disabled={editRoleForm.processing}
+                                >
+                                    Cancel
+                                </Button>
+                            </DialogClose>
+                            <Button
+                                type="submit"
+                                disabled={editRoleForm.processing}
+                            >
+                                <Pencil />
+                                {editRoleForm.processing
+                                    ? 'Saving role...'
+                                    : 'Save changes'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={addRegionOpen}
+                onOpenChange={(open) => {
+                    setAddRegionOpen(open);
+
+                    if (!open) {
+                        regionForm.resetAndClearErrors();
+                    }
+                }}
+            >
+                <DialogContent>
+                    <form onSubmit={submitRegion} className="space-y-5">
+                        <DialogHeader>
+                            <DialogTitle>Add region</DialogTitle>
+                            <DialogDescription>
+                                Add a region that can be used across the
+                                application.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-2">
+                            <Label htmlFor="region-name">Region name</Label>
+                            <Input
+                                id="region-name"
+                                autoFocus
+                                value={regionForm.data.name}
+                                aria-invalid={Boolean(regionForm.errors.name)}
+                                placeholder="Example: Region IV-A"
+                                onChange={(event) =>
+                                    regionForm.setData(
+                                        'name',
+                                        event.target.value,
+                                    )
+                                }
+                            />
+                            <InputError message={regionForm.errors.name} />
+                        </div>
+                        <DialogFooter>
+                            <DialogClose asChild>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    disabled={regionForm.processing}
+                                >
+                                    Cancel
+                                </Button>
+                            </DialogClose>
+                            <Button
+                                type="submit"
+                                disabled={regionForm.processing}
+                            >
+                                <Plus />
+                                {regionForm.processing
+                                    ? 'Adding region...'
+                                    : 'Add region'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={deletingRole !== null}
+                onOpenChange={(open) => {
+                    if (!open && !roleDeletionForm.processing) {
+                        setDeletingRole(null);
+                        roleDeletionForm.clearErrors();
+                    }
+                }}
+            >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Delete role?</DialogTitle>
+                        <DialogDescription>
+                            This will permanently delete{' '}
+                            <span className="font-medium text-foreground">
+                                {deletingRole?.name}
+                            </span>
+                            .
+                        </DialogDescription>
+                    </DialogHeader>
+                    <InputError message={roleDeletionForm.errors.role} />
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={roleDeletionForm.processing}
+                            onClick={() => setDeletingRole(null)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            disabled={roleDeletionForm.processing}
+                            onClick={confirmRoleDeletion}
+                        >
+                            <Trash2 />
+                            {roleDeletionForm.processing
+                                ? 'Deleting...'
+                                : 'Delete role'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={deletingRegion !== null}
+                onOpenChange={(open) => {
+                    if (!open && !regionDeletionForm.processing) {
+                        setDeletingRegion(null);
+                        regionDeletionForm.clearErrors();
+                    }
+                }}
+            >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Delete region?</DialogTitle>
+                        <DialogDescription>
+                            This will permanently delete{' '}
+                            <span className="font-medium text-foreground">
+                                {deletingRegion?.name}
+                            </span>
+                            .
+                        </DialogDescription>
+                    </DialogHeader>
+                    <InputError message={regionDeletionForm.errors.region} />
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={regionDeletionForm.processing}
+                            onClick={() => setDeletingRegion(null)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            disabled={regionDeletionForm.processing}
+                            onClick={confirmRegionDeletion}
+                        >
+                            <Trash2 />
+                            {regionDeletionForm.processing
+                                ? 'Deleting...'
+                                : 'Delete region'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <Dialog open={addUserOpen} onOpenChange={changeAddUserDialog}>
                 <DialogContent className="flex h-[min(42rem,calc(100vh-2rem))] flex-col overflow-visible sm:max-w-4xl">

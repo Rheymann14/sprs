@@ -44,6 +44,7 @@ class HandleInertiaRequests extends Middleware
                     'userRole:id,name',
                 ]),
                 'permissions' => [
+                    'manage_forms' => $request->user()?->can('manage-forms') ?? false,
                     'manage_users' => $request->user()?->can('manage-users') ?? false,
                 ],
             ],

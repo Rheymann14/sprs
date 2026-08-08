@@ -33,7 +33,14 @@ class StoreUserRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', Rule::unique(User::class, 'email')],
             'password' => ['required', 'string', Password::min(8)],
-            'user_role' => ['required', 'string', Rule::in(UserRole::assignableNames())],
+            'user_role' => [
+                'required',
+                'string',
+                Rule::in(collect(UserRole::assignableNames())
+                    ->merge(UserRole::query()->where('name', '!=', UserRole::Administrator)->pluck('name'))
+                    ->unique()
+                    ->all()),
+            ],
             'region_id' => [
                 'required',
                 'string',

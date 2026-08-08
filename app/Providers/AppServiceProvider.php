@@ -28,12 +28,20 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
 
+        Gate::before(fn (User $user): ?bool => $user->userRole()
+            ->where('name', UserRole::SuperAdmin)
+            ->exists() ? true : null);
+
         Gate::define('manage-forms', fn (User $user): bool => $user->userRole()
             ->where('name', UserRole::Administrator)
             ->exists());
 
         Gate::define('manage-users', fn (User $user): bool => $user->userRole()
             ->whereIn('name', UserRole::userManagerNames())
+            ->exists());
+
+        Gate::define('manage-user-directories', fn (User $user): bool => $user->userRole()
+            ->where('name', UserRole::SuperAdmin)
             ->exists());
     }
 

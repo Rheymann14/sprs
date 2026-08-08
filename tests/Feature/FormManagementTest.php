@@ -23,6 +23,14 @@ function administrator(?Region $region = null): User
     return User::factory()->for($role, 'userRole')->for($region)->create();
 }
 
+function superAdministrator(?Region $region = null): User
+{
+    $role = UserRole::query()->firstOrCreate(['name' => UserRole::SuperAdmin]);
+    $region ??= Region::factory()->create();
+
+    return User::factory()->for($role, 'userRole')->for($region)->create();
+}
+
 test('guests are redirected from form management', function () {
     $this->get(route('form-management.index'))->assertRedirect(route('login'));
 });
@@ -31,6 +39,16 @@ test('non administrators cannot manage forms', function () {
     $this->actingAs(User::factory()->create())
         ->get(route('form-management.index'))
         ->assertForbidden();
+});
+
+test('super admins have full form management access', function () {
+    $this->actingAs(superAdministrator())
+        ->get(route('form-management.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('form-management/index')
+            ->where('auth.permissions.manage_forms', true)
+            ->where('auth.permissions.manage_users', true)
+        );
 });
 
 test('administrators can view normalized form definitions', function () {

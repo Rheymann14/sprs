@@ -18,6 +18,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  * @property-read Collection<int, User> $users
  * @property-read Collection<int, Incident> $incidents
+ * @property-read Collection<int, IncidentForm> $incidentForms
  */
 #[Fillable(['name'])]
 class Region extends Model
@@ -41,5 +42,13 @@ class Region extends Model
     public function incidents(): HasMany
     {
         return $this->hasMany(Incident::class);
+    }
+
+    /**
+     * @return HasMany<IncidentForm, $this>
+     */
+    public function incidentForms(): HasMany
+    {
+        return $this->hasMany(IncidentForm::class);
     }
 }

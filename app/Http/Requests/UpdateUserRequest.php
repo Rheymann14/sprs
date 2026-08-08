@@ -41,7 +41,14 @@ class UpdateUserRequest extends FormRequest
                 Rule::unique(User::class, 'email')->ignore($this->route('user')),
             ],
             'password' => ['nullable', 'string', Password::min(8)],
-            'user_role' => ['required', 'string', Rule::in(UserRole::assignableNames())],
+            'user_role' => [
+                'required',
+                'string',
+                Rule::in(collect(UserRole::assignableNames())
+                    ->merge(UserRole::query()->where('name', '!=', UserRole::Administrator)->pluck('name'))
+                    ->unique()
+                    ->all()),
+            ],
             'region_id' => [
                 'required',
                 'string',

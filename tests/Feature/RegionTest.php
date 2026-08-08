@@ -10,10 +10,23 @@ test('regions are seeded without duplicates', function () {
     $this->seed(RegionSeeder::class);
 
     expect(Region::query()->orderBy('id')->pluck('name')->all())->toBe([
-        'Region I',
-        'Region II',
-        'Region III',
-        'Region IV',
+        'Regional Office I',
+        'Regional Office II',
+        'Regional Office III',
+        'Regional Office IV',
+        'Regional Office V',
+        'Regional Office VI',
+        'Regional Office VII',
+        'Regional Office VIII',
+        'Regional Office IX',
+        'Regional Office X',
+        'Regional Office XI',
+        'Regional Office XII',
+        'Regional Office CAR',
+        'Regional Office CARAGA',
+        'Regional Office MIMAROPA',
+        'Regional Office NCR',
+        'Regional Office NIR',
     ]);
 });
 

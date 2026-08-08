@@ -12,7 +12,27 @@ class RegionSeeder extends Seeder
      */
     public function run(): void
     {
-        foreach (['Region I', 'Region II', 'Region III', 'Region IV'] as $name) {
+        $regions = [
+            'Regional Office I',
+            'Regional Office II',
+            'Regional Office III',
+            'Regional Office IV',
+            'Regional Office V',
+            'Regional Office VI',
+            'Regional Office VII',
+            'Regional Office VIII',
+            'Regional Office IX',
+            'Regional Office X',
+            'Regional Office XI',
+            'Regional Office XII',
+            'Regional Office CAR',
+            'Regional Office CARAGA',
+            'Regional Office MIMAROPA',
+            'Regional Office NCR',
+            'Regional Office NIR',
+        ];
+
+        foreach ($regions as $name) {
             Region::query()->firstOrCreate(['name' => $name]);
         }
     }

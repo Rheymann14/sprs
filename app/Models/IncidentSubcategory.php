@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property-read IncidentType $incidentType
  * @property-read IncidentForm|null $form
  * @property-read Collection<int, Incident> $incidents
+ * @property-read Collection<int, IncidentStatus> $statuses
  */
 #[Fillable(['name'])]
 class IncidentSubcategory extends Model
@@ -56,5 +57,11 @@ class IncidentSubcategory extends Model
     public function incidents(): HasMany
     {
         return $this->hasMany(Incident::class);
+    }
+
+    /** @return HasMany<IncidentStatus, $this> */
+    public function statuses(): HasMany
+    {
+        return $this->hasMany(IncidentStatus::class)->orderBy('sort_order');
     }
 }

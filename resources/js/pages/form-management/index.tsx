@@ -6,7 +6,10 @@ import {
     CheckSquare,
     ChevronLeft,
     ChevronRight,
+    CircleAlert,
+    CircleCheck,
     CircleDot,
+    Clock3,
     Eye,
     FileUp,
     GripVertical,
@@ -16,6 +19,7 @@ import {
     Plus,
     Save,
     Search,
+    Settings2,
     TextCursorInput,
     TextQuote,
     Trash2,
@@ -25,6 +29,7 @@ import type { FormEvent } from 'react';
 import { ReactSortable } from 'react-sortablejs';
 import { index as formManagement } from '@/actions/App/Http/Controllers/FormManagementController';
 import { update as updateIncidentForm } from '@/actions/App/Http/Controllers/IncidentFormController';
+import { update as updateIncidentStatuses } from '@/actions/App/Http/Controllers/IncidentStatusController';
 import {
     destroy as destroySubcategory,
     store as storeSubcategory,
@@ -94,12 +99,20 @@ type StoredSection = {
 type IncidentSubcategory = {
     id: string;
     name: string;
+    statuses: IncidentStatus[];
     form: {
         id: string;
         title: string;
         description: string | null;
         sections: StoredSection[];
     } | null;
+};
+
+type StatusIcon = 'circle-check' | 'clock' | 'circle-alert';
+
+type IncidentStatus = {
+    name: string;
+    icon: StatusIcon;
 };
 
 type IncidentType = {
@@ -189,6 +202,43 @@ const fieldIcons = {
 
 const workflowCardClassName =
     'border-blue-200/80 bg-blue-50/40 dark:border-blue-900/70 dark:bg-blue-950/20';
+
+const defaultStatuses: IncidentStatus[] = [
+    { name: 'Resolved', icon: 'circle-check' },
+    { name: 'Pending', icon: 'clock' },
+    { name: 'Unresolved', icon: 'circle-alert' },
+];
+
+const statusIconOptions = [
+    {
+        value: 'circle-check' as const,
+        label: 'Resolved icon',
+        icon: CircleCheck,
+        className:
+            'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400',
+        iconClassName: 'text-emerald-600 dark:text-emerald-400',
+    },
+    {
+        value: 'clock' as const,
+        label: 'Pending icon',
+        icon: Clock3,
+        className:
+            'bg-orange-50 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400',
+        iconClassName: 'text-orange-600 dark:text-orange-400',
+    },
+    {
+        value: 'circle-alert' as const,
+        label: 'Unresolved icon',
+        icon: CircleAlert,
+        className:
+            'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400',
+        iconClassName: 'text-rose-600 dark:text-rose-400',
+    },
+];
+
+function freshDefaultStatuses(): IncidentStatus[] {
+    return defaultStatuses.map((status) => ({ ...status }));
+}
 
 function PreviewField({ field }: { field: EditorField }) {
     const fieldId = `preview-${field.client_key}`;
@@ -420,6 +470,7 @@ export default function FormManagement({
     );
     const [savedFormSearch, setSavedFormSearch] = useState(filters.search);
     const [previewOpen, setPreviewOpen] = useState(false);
+    const [statusDialogOpen, setStatusDialogOpen] = useState(false);
     const [actionSectionKey, setActionSectionKey] = useState('');
     const [incidentTypeDialogOpen, setIncidentTypeDialogOpen] = useState(false);
     const [subcategoryDialogOpen, setSubcategoryDialogOpen] = useState(false);
@@ -444,6 +495,9 @@ export default function FormManagement({
     const incidentTypeForm = useForm({ name: '' });
     const createSubcategoryForm = useForm({ names: [''] });
     const editSubcategoryForm = useForm({ name: '' });
+    const statusForm = useForm<{ statuses: IncidentStatus[] }>({
+        statuses: initialSubcategory?.statuses ?? freshDefaultStatuses(),
+    });
     const form = useForm<EditorForm>({
         ...(initialSubcategory
             ? editorData(initialSubcategory)
@@ -591,6 +645,8 @@ export default function FormManagement({
         clearUnsavedItems();
         form.reset();
         form.clearErrors();
+        statusForm.setData('statuses', freshDefaultStatuses());
+        statusForm.clearErrors();
 
         router.get(
             formManagement.url({
@@ -625,6 +681,13 @@ export default function FormManagement({
         clearUnsavedItems();
         form.setData(data);
         form.clearErrors();
+        statusForm.setData(
+            'statuses',
+            subcategory.statuses.length > 0
+                ? subcategory.statuses
+                : freshDefaultStatuses(),
+        );
+        statusForm.clearErrors();
     };
 
     const requestIncidentTypeDeletion = (incidentType: IncidentType) => {
@@ -854,6 +917,84 @@ export default function FormManagement({
         });
     };
 
+    const updateStatus = <Key extends keyof IncidentStatus>(
+        statusIndex: number,
+        key: Key,
+        value: IncidentStatus[Key],
+    ) => {
+        statusForm.setData(
+            'statuses',
+            statusForm.data.statuses.map((status, index) =>
+                index === statusIndex ? { ...status, [key]: value } : status,
+            ),
+        );
+    };
+
+    const addStatus = () => {
+        if (statusForm.data.statuses.length >= 3) {
+            return;
+        }
+
+        const unusedIcon = statusIconOptions.find(
+            (option) =>
+                !statusForm.data.statuses.some(
+                    (status) => status.icon === option.value,
+                ),
+        );
+
+        statusForm.setData('statuses', [
+            ...statusForm.data.statuses,
+            {
+                name: '',
+                icon: unusedIcon?.value ?? 'circle-check',
+            },
+        ]);
+    };
+
+    const removeStatus = (statusIndex: number) => {
+        if (statusForm.data.statuses.length === 1) {
+            return;
+        }
+
+        statusForm.setData(
+            'statuses',
+            statusForm.data.statuses.filter(
+                (_, index) => index !== statusIndex,
+            ),
+        );
+    };
+
+    const saveStatuses = () => {
+        if (!selectedIncidentType || !selectedSubcategory) {
+            return;
+        }
+
+        statusForm.put(
+            updateIncidentStatuses.url({
+                incident_type: selectedIncidentType.id,
+                subcategory: selectedSubcategory.id,
+            }),
+            {
+                preserveScroll: true,
+                onSuccess: () => setStatusDialogOpen(false),
+            },
+        );
+    };
+
+    const changeStatusDialogOpen = (open: boolean) => {
+        if (!open && !statusForm.processing && selectedSubcategory) {
+            statusForm.setData(
+                'statuses',
+                selectedSubcategory.statuses.length > 0
+                    ? selectedSubcategory.statuses
+                    : freshDefaultStatuses(),
+            );
+            statusForm.clearErrors();
+        }
+
+        setStatusDialogOpen(open);
+    };
+
     const searchSavedForms = (event: FormEvent) => {
         event.preventDefault();
 
@@ -910,12 +1051,23 @@ export default function FormManagement({
                 </div>
 
                 <Card className={workflowCardClassName}>
-                    <CardHeader>
-                        <CardTitle>Form assignment</CardTitle>
-                        <CardDescription>
-                            Select an incident type, then choose the subcategory
-                            whose form you want to edit.
-                        </CardDescription>
+                    <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-1.5">
+                            <CardTitle>Form assignment</CardTitle>
+                            <CardDescription>
+                                Select an incident type, then choose the
+                                subcategory whose form you want to edit.
+                            </CardDescription>
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full sm:w-auto"
+                            disabled={!selectedSubcategory}
+                            onClick={() => setStatusDialogOpen(true)}
+                        >
+                            <Settings2 /> Manage statuses
+                        </Button>
                     </CardHeader>
                     <CardContent className="grid gap-5 lg:grid-cols-2">
                         <div className="space-y-2">
@@ -1320,6 +1472,213 @@ export default function FormManagement({
                         onSubmit={saveForm}
                         className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]"
                     >
+                        <Dialog
+                            open={statusDialogOpen}
+                            onOpenChange={changeStatusDialogOpen}
+                        >
+                            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+                                <DialogHeader>
+                                    <DialogTitle>Status management</DialogTitle>
+                                    <DialogDescription>
+                                        Customize up to three statuses and icons
+                                        for {selectedIncidentType?.name} /{' '}
+                                        {selectedSubcategory?.name}.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="flex justify-end">
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="w-full sm:w-auto"
+                                        disabled={
+                                            statusForm.data.statuses.length >= 3
+                                        }
+                                        onClick={addStatus}
+                                    >
+                                        <Plus /> Add status
+                                    </Button>
+                                </div>
+                                <div className="space-y-5">
+                                    <div className="divide-y overflow-hidden rounded-lg border">
+                                        {statusForm.data.statuses.map(
+                                            (status, statusIndex) => {
+                                                const selectedIcon =
+                                                    statusIconOptions.find(
+                                                        (option) =>
+                                                            option.value ===
+                                                            status.icon,
+                                                    ) ?? statusIconOptions[0];
+                                                const StatusIcon =
+                                                    selectedIcon.icon;
+                                                const statusErrors =
+                                                    statusForm.errors as Record<
+                                                        string,
+                                                        string
+                                                    >;
+
+                                                return (
+                                                    <article
+                                                        key={statusIndex}
+                                                        className="grid gap-4 p-4 md:grid-cols-[minmax(0,1fr)_12rem_auto] md:items-end"
+                                                    >
+                                                        <div className="space-y-2">
+                                                            <Label
+                                                                htmlFor={`status-name-${statusIndex}`}
+                                                            >
+                                                                Status{' '}
+                                                                {statusIndex +
+                                                                    1}
+                                                            </Label>
+                                                            <div className="flex gap-2">
+                                                                <div
+                                                                    className={cn(
+                                                                        'flex size-9 shrink-0 items-center justify-center rounded-lg',
+                                                                        selectedIcon.className,
+                                                                    )}
+                                                                >
+                                                                    <StatusIcon className="size-4" />
+                                                                </div>
+                                                                <Input
+                                                                    id={`status-name-${statusIndex}`}
+                                                                    value={
+                                                                        status.name
+                                                                    }
+                                                                    placeholder="Enter status"
+                                                                    maxLength={
+                                                                        32
+                                                                    }
+                                                                    onChange={(
+                                                                        event,
+                                                                    ) =>
+                                                                        updateStatus(
+                                                                            statusIndex,
+                                                                            'name',
+                                                                            event
+                                                                                .target
+                                                                                .value,
+                                                                        )
+                                                                    }
+                                                                />
+                                                            </div>
+                                                            {statusErrors[
+                                                                `statuses.${statusIndex}.name`
+                                                            ] && (
+                                                                <p className="text-sm text-destructive">
+                                                                    {
+                                                                        statusErrors[
+                                                                            `statuses.${statusIndex}.name`
+                                                                        ]
+                                                                    }
+                                                                </p>
+                                                            )}
+                                                        </div>
+
+                                                        <fieldset className="space-y-2">
+                                                            <legend className="text-sm font-medium">
+                                                                Icon
+                                                            </legend>
+                                                            <div className="grid grid-cols-3 gap-2">
+                                                                {statusIconOptions.map(
+                                                                    (
+                                                                        option,
+                                                                    ) => {
+                                                                        const Icon =
+                                                                            option.icon;
+
+                                                                        return (
+                                                                            <button
+                                                                                key={
+                                                                                    option.value
+                                                                                }
+                                                                                type="button"
+                                                                                aria-label={
+                                                                                    option.label
+                                                                                }
+                                                                                aria-pressed={
+                                                                                    status.icon ===
+                                                                                    option.value
+                                                                                }
+                                                                                className={cn(
+                                                                                    'flex h-10 items-center justify-center rounded-lg border transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none',
+                                                                                    status.icon ===
+                                                                                        option.value
+                                                                                        ? 'border-primary bg-primary/5'
+                                                                                        : 'hover:bg-muted',
+                                                                                )}
+                                                                                onClick={() =>
+                                                                                    updateStatus(
+                                                                                        statusIndex,
+                                                                                        'icon',
+                                                                                        option.value,
+                                                                                    )
+                                                                                }
+                                                                            >
+                                                                                <Icon
+                                                                                    className={cn(
+                                                                                        'size-5',
+                                                                                        option.iconClassName,
+                                                                                    )}
+                                                                                />
+                                                                            </button>
+                                                                        );
+                                                                    },
+                                                                )}
+                                                            </div>
+                                                        </fieldset>
+
+                                                        <Button
+                                                            type="button"
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            className="justify-self-end text-muted-foreground hover:text-destructive md:justify-self-auto"
+                                                            aria-label={`Remove ${status.name || `status ${statusIndex + 1}`}`}
+                                                            disabled={
+                                                                statusForm.data
+                                                                    .statuses
+                                                                    .length ===
+                                                                1
+                                                            }
+                                                            onClick={() =>
+                                                                removeStatus(
+                                                                    statusIndex,
+                                                                )
+                                                            }
+                                                        >
+                                                            <Trash2 />
+                                                        </Button>
+                                                    </article>
+                                                );
+                                            },
+                                        )}
+                                    </div>
+
+                                    {statusForm.errors.statuses && (
+                                        <p className="text-sm text-destructive">
+                                            {statusForm.errors.statuses}
+                                        </p>
+                                    )}
+
+                                    <div className="flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
+                                        <p className="text-sm text-muted-foreground">
+                                            {statusForm.data.statuses.length} of
+                                            3 statuses configured
+                                        </p>
+                                        <Button
+                                            type="button"
+                                            className="w-full sm:w-auto"
+                                            disabled={statusForm.processing}
+                                            onClick={saveStatuses}
+                                        >
+                                            <Save />{' '}
+                                            {statusForm.processing
+                                                ? 'Saving...'
+                                                : 'Save statuses'}
+                                        </Button>
+                                    </div>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
                         <div className="min-w-0 space-y-6">
                             <Card>
                                 <CardHeader>

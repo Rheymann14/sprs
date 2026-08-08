@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Enums\FormFieldType;
 use App\Models\IncidentForm;
+use App\Models\IncidentStatus;
+use App\Models\IncidentSubcategory;
 use App\Models\IncidentType;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -22,6 +24,7 @@ class FormManagementController extends Controller
             ->select('id', 'name')
             ->with([
                 'subcategories:id,incident_type_id,name',
+                'subcategories.statuses:id,incident_subcategory_id,name,icon,sort_order',
                 'subcategories.form' => function (HasOne $query) use ($regionId): void {
                     $query
                         ->select('id', 'incident_subcategory_id', 'region_id', 'title', 'description')
@@ -32,7 +35,14 @@ class FormManagementController extends Controller
                 'subcategories.form.sections.fields.options:id,form_field_id,label,value,sort_order',
             ])
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->each(function (IncidentType $incidentType): void {
+                $incidentType->subcategories->each(function (IncidentSubcategory $subcategory): void {
+                    if ($subcategory->statuses->isEmpty()) {
+                        $subcategory->setRelation('statuses', collect(IncidentStatus::defaults()));
+                    }
+                });
+            });
 
         $selectedIncidentTypeId = $request->string('incident_type')->toString();
         $selectedSubcategoryId = $request->string('subcategory')->toString();

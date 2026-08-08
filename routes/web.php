@@ -3,6 +3,7 @@
 use App\Http\Controllers\FormManagementController;
 use App\Http\Controllers\IncidentController;
 use App\Http\Controllers\IncidentFormController;
+use App\Http\Controllers\IncidentStatusController;
 use App\Http\Controllers\IncidentSubcategoryController;
 use App\Http\Controllers\IncidentTypeController;
 use App\Http\Controllers\StatisticsController;
@@ -38,6 +39,9 @@ Route::middleware(['auth', 'verified', 'can:manage-forms'])->group(function () {
     Route::delete('incident-types/{incident_type}/subcategories/{subcategory}', [IncidentSubcategoryController::class, 'destroy'])
         ->scopeBindings()
         ->name('incident-types.subcategories.destroy');
+    Route::put('incident-types/{incident_type}/subcategories/{subcategory}/statuses', [IncidentStatusController::class, 'update'])
+        ->scopeBindings()
+        ->name('incident-types.subcategories.statuses.update');
 
     Route::put('incident-subcategories/{incident_subcategory}/form', [IncidentFormController::class, 'update'])
         ->name('incident-subcategories.form.update');

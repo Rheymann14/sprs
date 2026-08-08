@@ -1,10 +1,12 @@
 <?php
 
 use App\Enums\FormFieldType;
+use App\Enums\IncidentStatusIcon;
 use App\Models\FormField;
 use App\Models\FormFieldOption;
 use App\Models\FormSection;
 use App\Models\IncidentForm;
+use App\Models\IncidentStatus;
 use App\Models\IncidentSubcategory;
 use App\Models\IncidentType;
 use App\Models\Region;
@@ -53,9 +55,68 @@ test('administrators can view normalized form definitions', function () {
             ->component('form-management/index')
             ->where('incidentTypes.0.name', 'Fire')
             ->where('incidentTypes.0.subcategories.0.name', 'Structural fire')
+            ->where('incidentTypes.0.subcategories.0.statuses.0.name', 'Resolved')
+            ->where('incidentTypes.0.subcategories.0.statuses.0.icon', IncidentStatusIcon::CircleCheck->value)
+            ->where('incidentTypes.0.subcategories.0.statuses.1.name', 'Pending')
+            ->where('incidentTypes.0.subcategories.0.statuses.2.name', 'Unresolved')
             ->where('incidentTypes.0.subcategories.0.form.sections.0.fields.0.options.0.label', 'Residential')
             ->has('fieldTypes', 8)
         );
+});
+
+test('administrators can customize up to three statuses for a subcategory', function () {
+    $administrator = administrator();
+    $incidentType = IncidentType::factory()->create();
+    $subcategory = IncidentSubcategory::factory()->for($incidentType)->create();
+
+    $this->actingAs($administrator)
+        ->put(route('incident-types.subcategories.statuses.update', [$incidentType, $subcategory]), [
+            'statuses' => [
+                ['name' => 'Closed', 'icon' => IncidentStatusIcon::CircleCheck->value],
+                ['name' => 'Under review', 'icon' => IncidentStatusIcon::Clock->value],
+                ['name' => 'Escalated', 'icon' => IncidentStatusIcon::CircleAlert->value],
+            ],
+        ])
+        ->assertRedirect(route('form-management.index', [
+            'incident_type' => $incidentType->id,
+            'subcategory' => $subcategory->id,
+        ]))
+        ->assertInertiaFlash('toast.message', 'Statuses saved.');
+
+    expect($subcategory->statuses()->pluck('name')->all())->toBe([
+        'Closed',
+        'Under review',
+        'Escalated',
+    ])->and(IncidentStatus::query()->count())->toBe(3);
+
+    $this->actingAs($administrator)
+        ->get(route('form-management.index', [
+            'incident_type' => $incidentType->id,
+            'subcategory' => $subcategory->id,
+        ]))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('incidentTypes.0.subcategories.0.statuses.0.name', 'Closed')
+            ->where('incidentTypes.0.subcategories.0.statuses.1.icon', IncidentStatusIcon::Clock->value)
+            ->where('incidentTypes.0.subcategories.0.statuses.2.name', 'Escalated')
+        );
+});
+
+test('status management rejects more than three statuses and invalid icons', function () {
+    $incidentType = IncidentType::factory()->create();
+    $subcategory = IncidentSubcategory::factory()->for($incidentType)->create();
+
+    $this->actingAs(administrator())
+        ->put(route('incident-types.subcategories.statuses.update', [$incidentType, $subcategory]), [
+            'statuses' => [
+                ['name' => 'One', 'icon' => IncidentStatusIcon::CircleCheck->value],
+                ['name' => 'Two', 'icon' => IncidentStatusIcon::Clock->value],
+                ['name' => 'Three', 'icon' => IncidentStatusIcon::CircleAlert->value],
+                ['name' => 'Four', 'icon' => 'not-an-icon'],
+            ],
+        ])
+        ->assertSessionHasErrors(['statuses', 'statuses.3.icon']);
+
+    expect($subcategory->statuses()->doesntExist())->toBeTrue();
 });
 
 test('administrators can search and paginate saved forms and open an assignment', function () {
@@ -356,6 +417,12 @@ test('scoped subcategory routes reject a subcategory from another incident type'
     $this->actingAs(administrator())
         ->put(route('incident-types.subcategories.update', [$firstType, $otherSubcategory]), [
             'name' => 'Should not update',
+        ])
+        ->assertNotFound();
+
+    $this->actingAs(administrator())
+        ->put(route('incident-types.subcategories.statuses.update', [$firstType, $otherSubcategory]), [
+            'statuses' => IncidentStatus::defaults(),
         ])
         ->assertNotFound();
 });

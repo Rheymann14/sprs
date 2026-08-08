@@ -4,9 +4,11 @@ import {
     ClipboardList,
     FolderGit2,
     ChartNoAxesColumnIncreasing,
+    Siren,
     Users,
 } from 'lucide-react';
 import { index as formManagement } from '@/actions/App/Http/Controllers/FormManagementController';
+import { index as incidents } from '@/actions/App/Http/Controllers/IncidentController';
 import { index as userManagement } from '@/actions/App/Http/Controllers/UserManagementController';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
@@ -27,6 +29,7 @@ import type { NavItem } from '@/types';
 export function AppSidebar() {
     const { auth } = usePage().props;
     const statisticsUrl = statistics();
+    const incidentsUrl = incidents();
     const formManagementUrl = formManagement();
     const userManagementUrl = userManagement();
 
@@ -35,6 +38,11 @@ export function AppSidebar() {
             title: 'Statistics',
             href: statisticsUrl,
             icon: ChartNoAxesColumnIncreasing,
+        },
+        {
+            title: 'Incidents',
+            href: incidentsUrl,
+            icon: Siren,
         },
         ...(auth.user.user_role?.name === 'administrator'
             ? [

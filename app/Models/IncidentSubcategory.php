@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Database\Factories\IncidentSubcategoryFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -17,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property string $name
  * @property-read IncidentType $incidentType
  * @property-read IncidentForm|null $form
+ * @property-read Collection<int, Incident> $incidents
  */
 #[Fillable(['name'])]
 class IncidentSubcategory extends Model
@@ -46,5 +48,13 @@ class IncidentSubcategory extends Model
     public function forms(): HasMany
     {
         return $this->hasMany(IncidentForm::class);
+    }
+
+    /**
+     * @return HasMany<Incident, $this>
+     */
+    public function incidents(): HasMany
+    {
+        return $this->hasMany(Incident::class);
     }
 }

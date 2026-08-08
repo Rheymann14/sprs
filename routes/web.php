@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\FormManagementController;
+use App\Http\Controllers\IncidentController;
 use App\Http\Controllers\IncidentFormController;
 use App\Http\Controllers\IncidentSubcategoryController;
 use App\Http\Controllers\IncidentTypeController;
@@ -13,6 +14,10 @@ Route::inertia('/', 'welcome')->name('home');
 Route::get('statistics', StatisticsController::class)
     ->middleware(['auth', 'verified'])
     ->name('statistics');
+
+Route::get('incidents', [IncidentController::class, 'index'])
+    ->middleware(['auth', 'verified'])
+    ->name('incidents.index');
 
 Route::middleware(['auth', 'verified', 'can:manage-forms'])->group(function () {
     Route::get('form-management', [FormManagementController::class, 'index'])

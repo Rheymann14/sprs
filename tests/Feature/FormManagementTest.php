@@ -5,6 +5,7 @@ use App\Enums\IncidentStatusIcon;
 use App\Models\FormField;
 use App\Models\FormFieldOption;
 use App\Models\FormSection;
+use App\Models\Incident;
 use App\Models\IncidentForm;
 use App\Models\IncidentStatus;
 use App\Models\IncidentSubcategory;
@@ -86,6 +87,10 @@ test('administrators can customize up to three statuses for a subcategory', func
     $administrator = administrator();
     $incidentType = IncidentType::factory()->create();
     $subcategory = IncidentSubcategory::factory()->for($incidentType)->create();
+    $incident = Incident::factory()
+        ->for($administrator->region)
+        ->for($subcategory, 'subcategory')
+        ->create(['status' => 'pending']);
 
     $this->actingAs($administrator)
         ->put(route('incident-types.subcategories.statuses.update', [$incidentType, $subcategory]), [
@@ -105,7 +110,8 @@ test('administrators can customize up to three statuses for a subcategory', func
         'Closed',
         'Under review',
         'Escalated',
-    ])->and(IncidentStatus::query()->count())->toBe(3);
+    ])->and(IncidentStatus::query()->count())->toBe(3)
+        ->and($incident->refresh()->status)->toBe('Under review');
 
     $this->actingAs($administrator)
         ->get(route('form-management.index', [

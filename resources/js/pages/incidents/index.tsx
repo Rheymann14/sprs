@@ -1,8 +1,24 @@
-import { Head, Link, router } from '@inertiajs/react';
-import { ChevronLeft, ChevronRight, Search, Siren } from 'lucide-react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
+import {
+    ChevronLeft,
+    ChevronRight,
+    CircleAlert,
+    CircleCheck,
+    Clock3,
+    FilePlus2,
+    Pencil,
+    Search,
+    Siren,
+    Trash2,
+} from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useState } from 'react';
-import { index as incidentsIndex } from '@/actions/App/Http/Controllers/IncidentController';
+import {
+    create as createIncident,
+    destroy as destroyIncident,
+    edit as editIncident,
+    index as incidentsIndex,
+} from '@/actions/App/Http/Controllers/IncidentController';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,6 +29,14 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 
 type Incident = {
@@ -22,7 +46,10 @@ type Incident = {
     subcategory: string;
     status: string;
     status_label: string;
+    status_icon: StatusIcon;
 };
+
+type StatusIcon = 'circle-check' | 'clock' | 'circle-alert';
 
 type PaginatedIncidents = {
     data: Incident[];
@@ -40,8 +67,41 @@ type IncidentsProps = {
     };
 };
 
+const statusAppearances = {
+    'circle-check': {
+        icon: CircleCheck,
+        className:
+            'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300',
+    },
+    clock: {
+        icon: Clock3,
+        className:
+            'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950/50 dark:text-orange-300',
+    },
+    'circle-alert': {
+        icon: CircleAlert,
+        className:
+            'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300',
+    },
+} satisfies Record<StatusIcon, { icon: typeof CircleCheck; className: string }>;
+
+function IncidentStatusBadge({ incident }: { incident: Incident }) {
+    const appearance = statusAppearances[incident.status_icon];
+    const StatusIcon = appearance.icon;
+
+    return (
+        <Badge variant="outline" className={appearance.className}>
+            <StatusIcon /> {incident.status_label}
+        </Badge>
+    );
+}
+
 export default function Incidents({ incidents, filters }: IncidentsProps) {
     const [searchQuery, setSearchQuery] = useState(filters.search);
+    const [deletingIncident, setDeletingIncident] = useState<Incident | null>(
+        null,
+    );
+    const deletionForm = useForm({});
 
     const searchIncidents = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -73,16 +133,15 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
         );
     };
 
-    const statusVariant = (status: string) => {
-        if (status === 'resolved') {
-            return 'default' as const;
+    const deleteSelectedIncident = () => {
+        if (!deletingIncident) {
+            return;
         }
 
-        if (status === 'unresolved') {
-            return 'destructive' as const;
-        }
-
-        return 'secondary' as const;
+        deletionForm.delete(destroyIncident.url(deletingIncident.id), {
+            preserveScroll: true,
+            onSuccess: () => setDeletingIncident(null),
+        });
     };
 
     return (
@@ -90,10 +149,17 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
             <Head title="Incidents" />
 
             <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6">
-                <Heading
-                    title="Incidents"
-                    description="Search and review incidents reported in your region."
-                />
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <Heading
+                        title="Incidents"
+                        description="Search and review incidents reported in your region."
+                    />
+                    <Button asChild>
+                        <Link href={createIncident()}>
+                            <FilePlus2 /> File Report
+                        </Link>
+                    </Button>
+                </div>
 
                 <Card>
                     <CardHeader className="gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -156,6 +222,9 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
                                                 <th className="px-5 py-3.5 font-medium">
                                                     Status
                                                 </th>
+                                                <th className="px-5 py-3.5 text-right font-medium">
+                                                    Actions
+                                                </th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y">
@@ -182,15 +251,41 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
                                                         </p>
                                                     </td>
                                                     <td className="px-5 py-4">
-                                                        <Badge
-                                                            variant={statusVariant(
-                                                                incident.status,
-                                                            )}
-                                                        >
-                                                            {
-                                                                incident.status_label
-                                                            }
-                                                        </Badge>
+                                                        <IncidentStatusBadge
+                                                            incident={incident}
+                                                        />
+                                                    </td>
+                                                    <td className="px-5 py-4">
+                                                        <div className="flex justify-end gap-2">
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                asChild
+                                                            >
+                                                                <Link
+                                                                    href={editIncident(
+                                                                        incident.id,
+                                                                    )}
+                                                                >
+                                                                    <Pencil />{' '}
+                                                                    Edit
+                                                                </Link>
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                                onClick={() =>
+                                                                    setDeletingIncident(
+                                                                        incident,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Trash2 />{' '}
+                                                                Delete
+                                                            </Button>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))}
@@ -218,14 +313,39 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
                                                         {incident.subcategory}
                                                     </p>
                                                 </div>
-                                                <Badge
-                                                    variant={statusVariant(
-                                                        incident.status,
-                                                    )}
-                                                    className="shrink-0"
+                                                <div className="shrink-0">
+                                                    <IncidentStatusBadge
+                                                        incident={incident}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 grid grid-cols-2 gap-2 border-t pt-4">
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    asChild
                                                 >
-                                                    {incident.status_label}
-                                                </Badge>
+                                                    <Link
+                                                        href={editIncident(
+                                                            incident.id,
+                                                        )}
+                                                    >
+                                                        <Pencil /> Edit
+                                                    </Link>
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                    onClick={() =>
+                                                        setDeletingIncident(
+                                                            incident,
+                                                        )
+                                                    }
+                                                >
+                                                    <Trash2 /> Delete
+                                                </Button>
                                             </div>
                                         </article>
                                     ))}
@@ -342,6 +462,47 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
                         )}
                     </CardContent>
                 </Card>
+
+                <Dialog
+                    open={deletingIncident !== null}
+                    onOpenChange={(open) => {
+                        if (!open && !deletionForm.processing) {
+                            setDeletingIncident(null);
+                        }
+                    }}
+                >
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Delete incident?</DialogTitle>
+                            <DialogDescription>
+                                This permanently deletes{' '}
+                                {deletingIncident?.incident_number} and its
+                                saved report. This action cannot be undone.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={deletionForm.processing}
+                                onClick={() => setDeletingIncident(null)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="destructive"
+                                disabled={deletionForm.processing}
+                                onClick={deleteSelectedIncident}
+                            >
+                                <Trash2 />
+                                {deletionForm.processing
+                                    ? 'Deleting...'
+                                    : 'Delete incident'}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </div>
         </>
     );

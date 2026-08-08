@@ -21,6 +21,21 @@ Route::get('statistics', StatisticsController::class)
 Route::get('incidents', [IncidentController::class, 'index'])
     ->middleware(['auth', 'verified'])
     ->name('incidents.index');
+Route::get('incidents/report', [IncidentController::class, 'create'])
+    ->middleware(['auth', 'verified'])
+    ->name('incidents.create');
+Route::get('incidents/report/{incident}', [IncidentController::class, 'edit'])
+    ->middleware(['auth', 'verified'])
+    ->name('incidents.edit');
+Route::post('incidents', [IncidentController::class, 'store'])
+    ->middleware(['auth', 'verified'])
+    ->name('incidents.store');
+Route::put('incidents/{incident}', [IncidentController::class, 'update'])
+    ->middleware(['auth', 'verified'])
+    ->name('incidents.update');
+Route::delete('incidents/{incident}', [IncidentController::class, 'destroy'])
+    ->middleware(['auth', 'verified'])
+    ->name('incidents.destroy');
 
 Route::middleware(['auth', 'verified', 'can:manage-forms'])->group(function () {
     Route::get('form-management', [FormManagementController::class, 'index'])

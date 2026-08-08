@@ -17,12 +17,13 @@ use Illuminate\Support\Str;
  * @property string $incident_subcategory_id
  * @property string $region_id
  * @property string $status
+ * @property array<string, mixed>|null $report_data
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read IncidentSubcategory $subcategory
  * @property-read Region $region
  */
-#[Fillable(['incident_subcategory_id', 'region_id', 'status'])]
+#[Fillable(['incident_subcategory_id', 'region_id', 'status', 'report_data'])]
 class Incident extends Model
 {
     /** @use HasFactory<IncidentFactory> */
@@ -47,6 +48,16 @@ class Incident extends Model
     public function region(): BelongsTo
     {
         return $this->belongsTo(Region::class);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function casts(): array
+    {
+        return [
+            'report_data' => 'array',
+        ];
     }
 
     protected static function booted(): void

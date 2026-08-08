@@ -240,6 +240,10 @@ function freshDefaultStatuses(): IncidentStatus[] {
     return defaultStatuses.map((status) => ({ ...status }));
 }
 
+function editableStatuses(statuses: IncidentStatus[]): IncidentStatus[] {
+    return statuses.map(({ name, icon }) => ({ name, icon }));
+}
+
 function PreviewField({ field }: { field: EditorField }) {
     const fieldId = `preview-${field.client_key}`;
 
@@ -496,7 +500,9 @@ export default function FormManagement({
     const createSubcategoryForm = useForm({ names: [''] });
     const editSubcategoryForm = useForm({ name: '' });
     const statusForm = useForm<{ statuses: IncidentStatus[] }>({
-        statuses: initialSubcategory?.statuses ?? freshDefaultStatuses(),
+        statuses: initialSubcategory
+            ? editableStatuses(initialSubcategory.statuses)
+            : freshDefaultStatuses(),
     });
     const form = useForm<EditorForm>({
         ...(initialSubcategory
@@ -684,7 +690,7 @@ export default function FormManagement({
         statusForm.setData(
             'statuses',
             subcategory.statuses.length > 0
-                ? subcategory.statuses
+                ? editableStatuses(subcategory.statuses)
                 : freshDefaultStatuses(),
         );
         statusForm.clearErrors();
@@ -969,6 +975,9 @@ export default function FormManagement({
             return;
         }
 
+        statusForm.transform(({ statuses }) => ({
+            statuses: editableStatuses(statuses),
+        }));
         statusForm.put(
             updateIncidentStatuses.url({
                 incident_type: selectedIncidentType.id,
@@ -986,7 +995,7 @@ export default function FormManagement({
             statusForm.setData(
                 'statuses',
                 selectedSubcategory.statuses.length > 0
-                    ? selectedSubcategory.statuses
+                    ? editableStatuses(selectedSubcategory.statuses)
                     : freshDefaultStatuses(),
             );
             statusForm.clearErrors();

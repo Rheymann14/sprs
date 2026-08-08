@@ -113,9 +113,11 @@ test('administrators can customize up to three statuses for a subcategory', func
             'subcategory' => $subcategory->id,
         ]))
         ->assertInertia(fn (Assert $page) => $page
-            ->where('incidentTypes.0.subcategories.0.statuses.0.name', 'Closed')
-            ->where('incidentTypes.0.subcategories.0.statuses.1.icon', IncidentStatusIcon::Clock->value)
-            ->where('incidentTypes.0.subcategories.0.statuses.2.name', 'Escalated')
+            ->where('incidentTypes.0.subcategories.0.statuses', [
+                ['name' => 'Closed', 'icon' => IncidentStatusIcon::CircleCheck->value],
+                ['name' => 'Under review', 'icon' => IncidentStatusIcon::Clock->value],
+                ['name' => 'Escalated', 'icon' => IncidentStatusIcon::CircleAlert->value],
+            ])
         );
 });
 

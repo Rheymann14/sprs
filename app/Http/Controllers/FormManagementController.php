@@ -38,9 +38,14 @@ class FormManagementController extends Controller
             ->get()
             ->each(function (IncidentType $incidentType): void {
                 $incidentType->subcategories->each(function (IncidentSubcategory $subcategory): void {
-                    if ($subcategory->statuses->isEmpty()) {
-                        $subcategory->setRelation('statuses', collect(IncidentStatus::defaults()));
-                    }
+                    $statuses = $subcategory->statuses->isEmpty()
+                        ? collect(IncidentStatus::defaults())
+                        : $subcategory->statuses->map(fn (IncidentStatus $status): array => [
+                            'name' => $status->name,
+                            'icon' => $status->icon->value,
+                        ]);
+
+                    $subcategory->setRelation('statuses', $statuses);
                 });
             });
 

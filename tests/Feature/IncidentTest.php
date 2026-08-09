@@ -619,7 +619,13 @@ test('incident message attachments enforce file count type and size limits', fun
 
 test('resolved and unresolved incidents lock messages until returned to pending', function () {
     $region = Region::factory()->create();
-    $user = User::factory()->for($region)->create();
+    $administratorRole = UserRole::query()->create([
+        'name' => UserRole::RegionalOfficeAdministrator,
+    ]);
+    $user = User::factory()
+        ->for($region)
+        ->for($administratorRole, 'userRole')
+        ->create();
     $subcategory = IncidentSubcategory::factory()->create();
     IncidentStatus::factory()->for($subcategory, 'subcategory')->create([
         'name' => 'Resolved',
@@ -732,4 +738,166 @@ test('super admins can access and filter incidents across regions', function () 
         ->assertSuccessful();
 
     expect($centralIncident->region_id)->toBe($centralRegion->id);
+});
+
+test('regional offices can route incidents to central office for shared conversation access', function () {
+    $centralRegion = Region::query()->firstOrCreate(['name' => Region::CentralOffice]);
+    $regionalOffice = Region::factory()->create();
+    $regionalRole = UserRole::query()->create(['name' => UserRole::RegionalOfficeStaff]);
+    $centralRole = UserRole::query()->create(['name' => UserRole::CentralOfficeStaff]);
+    $agencyRole = UserRole::query()->create(['name' => UserRole::Agency]);
+    $regionalUser = User::factory()
+        ->for($regionalOffice)
+        ->for($regionalRole, 'userRole')
+        ->create();
+    $centralUser = User::factory()
+        ->for($centralRegion)
+        ->for($centralRole, 'userRole')
+        ->create();
+    $agencyUser = User::factory()
+        ->for($regionalOffice)
+        ->for($agencyRole, 'userRole')
+        ->create();
+    $incident = Incident::factory()->for($regionalOffice)->create(['status' => 'Pending']);
+
+    $this->actingAs($regionalUser)
+        ->put(route('incidents.routing.update', $incident), [
+            'region_ids' => [$centralRegion->id],
+        ])
+        ->assertRedirect()
+        ->assertInertiaFlash('toast.message', 'Incident routing updated.');
+
+    expect($incident->routedRegions()->pluck('regions.id')->all())->toBe([$centralRegion->id]);
+
+    $this->actingAs($centralUser)
+        ->get(route('incidents.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('incidents.total', 1)
+            ->where('incidents.data.0.id', $incident->id)
+        );
+
+    $this->actingAs($centralUser)
+        ->post(route('incidents.messages.store', $incident), ['message' => 'Central Office response'])
+        ->assertRedirect();
+
+    $this->actingAs($agencyUser)
+        ->get(route('incidents.show', $incident))
+        ->assertSuccessful();
+
+    $this->actingAs($agencyUser)
+        ->put(route('incidents.routing.update', $incident), ['region_ids' => []])
+        ->assertForbidden();
+
+    expect($incident->messages()->value('message'))->toBe('Central Office response');
+});
+
+test('central office can route incidents to regional offices and their agencies', function () {
+    $centralRegion = Region::query()->firstOrCreate(['name' => Region::CentralOffice]);
+    $targetRegion = Region::factory()->create();
+    $otherRegion = Region::factory()->create();
+    $centralRole = UserRole::query()->create(['name' => UserRole::CentralOfficeStaff]);
+    $regionalRole = UserRole::query()->create(['name' => UserRole::RegionalOfficeStaff]);
+    $agencyRole = UserRole::query()->create(['name' => UserRole::Agency]);
+    $centralUser = User::factory()
+        ->for($centralRegion)
+        ->for($centralRole, 'userRole')
+        ->create();
+    $regionalUser = User::factory()
+        ->for($targetRegion)
+        ->for($regionalRole, 'userRole')
+        ->create();
+    $agencyUser = User::factory()
+        ->for($targetRegion)
+        ->for($agencyRole, 'userRole')
+        ->create();
+    $otherAgencyUser = User::factory()
+        ->for($otherRegion)
+        ->for($agencyRole, 'userRole')
+        ->create();
+    $incident = Incident::factory()->for($centralRegion)->create(['status' => 'Pending']);
+
+    $this->actingAs($centralUser)
+        ->put(route('incidents.routing.update', $incident), [
+            'region_ids' => [$targetRegion->id],
+        ])
+        ->assertRedirect();
+
+    $this->actingAs($regionalUser)
+        ->post(route('incidents.messages.store', $incident), ['message' => 'Regional Office response'])
+        ->assertRedirect();
+
+    $this->actingAs($agencyUser)
+        ->post(route('incidents.messages.store', $incident), ['message' => 'Agency response'])
+        ->assertRedirect();
+
+    $this->actingAs($otherAgencyUser)
+        ->get(route('incidents.show', $incident))
+        ->assertForbidden();
+
+    expect($incident->messages()->pluck('message')->all())->toBe([
+        'Regional Office response',
+        'Agency response',
+    ]);
+});
+
+test('only accessible central and regional office administrators can manage incident status', function () {
+    $centralRegion = Region::query()->firstOrCreate(['name' => Region::CentralOffice]);
+    $regionalOffice = Region::factory()->create();
+    $regionalAdministratorRole = UserRole::query()->create([
+        'name' => UserRole::RegionalOfficeAdministrator,
+    ]);
+    $centralAdministratorRole = UserRole::query()->create([
+        'name' => UserRole::CentralOfficeAdministrator,
+    ]);
+    $regionalStaffRole = UserRole::query()->create(['name' => UserRole::RegionalOfficeStaff]);
+    $agencyRole = UserRole::query()->create(['name' => UserRole::Agency]);
+    $regionalAdministrator = User::factory()
+        ->for($regionalOffice)
+        ->for($regionalAdministratorRole, 'userRole')
+        ->create();
+    $centralAdministrator = User::factory()
+        ->for($centralRegion)
+        ->for($centralAdministratorRole, 'userRole')
+        ->create();
+    $regionalStaff = User::factory()
+        ->for($regionalOffice)
+        ->for($regionalStaffRole, 'userRole')
+        ->create();
+    $agencyUser = User::factory()
+        ->for($regionalOffice)
+        ->for($agencyRole, 'userRole')
+        ->create();
+    $incident = Incident::factory()->for($regionalOffice)->create(['status' => 'Pending']);
+
+    $this->actingAs($regionalAdministrator)
+        ->put(route('incidents.routing.update', $incident), [
+            'region_ids' => [$centralRegion->id],
+        ])
+        ->assertRedirect();
+
+    $this->actingAs($regionalStaff)
+        ->patch(route('incidents.status.update', $incident), ['status' => 'Resolved'])
+        ->assertForbidden();
+
+    $this->actingAs($agencyUser)
+        ->patch(route('incidents.status.update', $incident), ['status' => 'Resolved'])
+        ->assertForbidden();
+
+    $this->actingAs($regionalAdministrator)
+        ->patch(route('incidents.status.update', $incident), ['status' => 'Resolved'])
+        ->assertRedirect();
+
+    $this->actingAs($centralAdministrator)
+        ->patch(route('incidents.status.update', $incident), ['status' => 'Pending'])
+        ->assertRedirect();
+
+    $this->actingAs($regionalStaff)
+        ->get(route('incidents.show', $incident))
+        ->assertInertia(fn (Assert $page) => $page->where('incident.can_manage_status', false));
+
+    $this->actingAs($centralAdministrator)
+        ->get(route('incidents.show', $incident))
+        ->assertInertia(fn (Assert $page) => $page->where('incident.can_manage_status', true));
+
+    expect($incident->refresh()->status)->toBe('Pending');
 });

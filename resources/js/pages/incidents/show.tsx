@@ -1,6 +1,7 @@
 import { Head, Link, useForm } from '@inertiajs/react';
 import {
     ArrowLeft,
+    Building2,
     CircleAlert,
     CircleCheck,
     Clock3,
@@ -8,6 +9,7 @@ import {
     FileText,
     Paperclip,
     Send,
+    Waypoints,
     X,
 } from 'lucide-react';
 import type { ChangeEvent, FormEvent } from 'react';
@@ -18,6 +20,7 @@ import {
     updateStatus,
 } from '@/actions/App/Http/Controllers/IncidentController';
 import { store as storeMessage } from '@/actions/App/Http/Controllers/IncidentMessageController';
+import { update as updateRouting } from '@/actions/App/Http/Controllers/IncidentRoutingController';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,6 +31,7 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogContent,
@@ -84,12 +88,20 @@ type Incident = {
         icon: StatusIcon;
     }>;
     conversation_open: boolean;
+    can_manage_status: boolean;
 };
 
 type Conversation = {
     messages: IncidentMessage[];
     has_earlier_messages: boolean;
     message_limit: number;
+};
+
+type Routing = {
+    origin_region: string;
+    can_manage: boolean;
+    routed_regions: Array<{ id: string; name: string }>;
+    available_regions: Array<{ id: string; name: string }>;
 };
 
 const statusAppearances = {
@@ -252,9 +264,11 @@ function SelectedAttachmentChip({
 export default function IncidentShow({
     incident,
     conversation,
+    routing,
 }: {
     incident: Incident;
     conversation: Conversation;
+    routing: Routing;
 }) {
     const [viewingAttachment, setViewingAttachment] =
         useState<Attachment | null>(null);
@@ -264,6 +278,9 @@ export default function IncidentShow({
         attachments: [],
     });
     const statusForm = useForm<{ status: string }>({ status: '' });
+    const routingForm = useForm<{ region_ids: string[] }>({
+        region_ids: routing.routed_regions.map((region) => region.id),
+    });
     const appearance = statusAppearances[incident.status_icon];
     const StatusIcon = appearance.icon;
     const attachmentError = Object.entries(messageForm.errors).find(([key]) =>
@@ -312,6 +329,23 @@ export default function IncidentShow({
                     messageForm.reset();
                 }
             },
+        });
+    };
+
+    const toggleRoutedRegion = (regionId: string, checked: boolean) => {
+        routingForm.setData(
+            'region_ids',
+            checked
+                ? [...routingForm.data.region_ids, regionId]
+                : routingForm.data.region_ids.filter((id) => id !== regionId),
+        );
+    };
+
+    const saveRouting = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        routingForm.put(updateRouting.url(incident.id), {
+            only: ['routing'],
+            preserveScroll: true,
         });
     };
 
@@ -398,6 +432,106 @@ export default function IncidentShow({
                             <p className="text-sm text-muted-foreground">
                                 No saved report details.
                             </p>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Waypoints className="size-5" /> Incident routing
+                        </CardTitle>
+                        <CardDescription>
+                            Routed offices and agencies can view this incident
+                            and participate in its conversation.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="flex items-start gap-3 rounded-xl border bg-muted/30 p-4">
+                            <Building2 className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+                            <div className="min-w-0">
+                                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                                    Originating office
+                                </p>
+                                <p className="font-medium">
+                                    {routing.origin_region}
+                                </p>
+                            </div>
+                        </div>
+
+                        {routing.can_manage ? (
+                            <form className="space-y-3" onSubmit={saveRouting}>
+                                <div>
+                                    <p className="text-sm font-medium">
+                                        Route conversation access
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                        Selecting a region grants access to its
+                                        Regional Office and agency users.
+                                    </p>
+                                </div>
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                    {routing.available_regions.map((region) => (
+                                        <label
+                                            key={region.id}
+                                            className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition hover:bg-accent/50"
+                                        >
+                                            <Checkbox
+                                                checked={routingForm.data.region_ids.includes(
+                                                    region.id,
+                                                )}
+                                                onCheckedChange={(checked) =>
+                                                    toggleRoutedRegion(
+                                                        region.id,
+                                                        checked === true,
+                                                    )
+                                                }
+                                            />
+                                            <span className="text-sm font-medium">
+                                                {region.name}
+                                            </span>
+                                        </label>
+                                    ))}
+                                </div>
+                                {routingForm.errors.region_ids && (
+                                    <p className="text-sm text-destructive">
+                                        {routingForm.errors.region_ids}
+                                    </p>
+                                )}
+                                <div className="flex justify-end">
+                                    <Button
+                                        type="submit"
+                                        disabled={routingForm.processing}
+                                    >
+                                        <Waypoints />
+                                        {routingForm.processing
+                                            ? 'Saving…'
+                                            : 'Save routing'}
+                                    </Button>
+                                </div>
+                            </form>
+                        ) : (
+                            <div>
+                                <p className="text-sm font-medium">Routed to</p>
+                                {routing.routed_regions.length > 0 ? (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {routing.routed_regions.map(
+                                            (region) => (
+                                                <Badge
+                                                    key={region.id}
+                                                    variant="secondary"
+                                                >
+                                                    {region.name}
+                                                </Badge>
+                                            ),
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        No additional offices yet.
+                                    </p>
+                                )}
+                            </div>
                         )}
                     </CardContent>
                 </Card>
@@ -598,12 +732,14 @@ export default function IncidentShow({
                     <CardHeader>
                         <CardTitle>Incident status</CardTitle>
                         <CardDescription>
-                            Choose what should happen next. The selected status
-                            also controls whether users can continue the
-                            conversation.
+                            CO and RO administrators manage the status here. The
+                            selected status also controls whether users can
+                            continue the conversation.
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="grid gap-6 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,2fr)]">
+                    <CardContent
+                        className={`grid gap-6 ${incident.can_manage_status ? 'lg:grid-cols-[minmax(0,0.8fr)_minmax(0,2fr)]' : ''}`}
+                    >
                         <div className="rounded-xl border bg-muted/30 p-4">
                             <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                                 Current status
@@ -621,63 +757,72 @@ export default function IncidentShow({
                             </p>
                         </div>
 
-                        <div className="space-y-3">
-                            <div>
-                                <p className="text-sm font-medium">
-                                    Change status
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                    Select an option below to update the
-                                    incident.
-                                </p>
-                            </div>
-                            <div className="grid gap-2 sm:grid-cols-2">
-                                {incident.managed_statuses
-                                    .filter(
-                                        (status) =>
-                                            status.name !==
-                                            incident.status_label,
-                                    )
-                                    .map((status) => {
-                                        const statusAppearance =
-                                            statusAppearances[status.icon];
-                                        const ManagedStatusIcon =
-                                            statusAppearance.icon;
+                        {incident.can_manage_status ? (
+                            <div className="space-y-3">
+                                <div>
+                                    <p className="text-sm font-medium">
+                                        Change status
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                        Select an option below to update the
+                                        incident.
+                                    </p>
+                                </div>
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                    {incident.managed_statuses
+                                        .filter(
+                                            (status) =>
+                                                status.name !==
+                                                incident.status_label,
+                                        )
+                                        .map((status) => {
+                                            const statusAppearance =
+                                                statusAppearances[status.icon];
+                                            const ManagedStatusIcon =
+                                                statusAppearance.icon;
 
-                                        return (
-                                            <Button
-                                                key={`${status.icon}-${status.name}`}
-                                                type="button"
-                                                variant="outline"
-                                                className={`h-auto min-h-20 justify-start gap-3 p-3 text-left whitespace-normal ${statusAppearance.className}`}
-                                                disabled={statusForm.processing}
-                                                onClick={() =>
-                                                    changeStatus(status)
-                                                }
-                                            >
-                                                <ManagedStatusIcon className="size-5 shrink-0" />
-                                                <span className="min-w-0">
-                                                    <span className="font-semibold">
-                                                        {status.name}
+                                            return (
+                                                <Button
+                                                    key={`${status.icon}-${status.name}`}
+                                                    type="button"
+                                                    variant="outline"
+                                                    className={`h-auto min-h-20 justify-start gap-3 p-3 text-left whitespace-normal ${statusAppearance.className}`}
+                                                    disabled={
+                                                        statusForm.processing
+                                                    }
+                                                    onClick={() =>
+                                                        changeStatus(status)
+                                                    }
+                                                >
+                                                    <ManagedStatusIcon className="size-5 shrink-0" />
+                                                    <span className="min-w-0">
+                                                        <span className="font-semibold">
+                                                            {status.name}
+                                                        </span>
+                                                        <span className="mt-1 block text-xs font-normal opacity-80">
+                                                            {
+                                                                statusExplanations[
+                                                                    status.icon
+                                                                ]
+                                                            }
+                                                        </span>
                                                     </span>
-                                                    <span className="mt-1 block text-xs font-normal opacity-80">
-                                                        {
-                                                            statusExplanations[
-                                                                status.icon
-                                                            ]
-                                                        }
-                                                    </span>
-                                                </span>
-                                            </Button>
-                                        );
-                                    })}
+                                                </Button>
+                                            );
+                                        })}
+                                </div>
+                                {statusForm.errors.status && (
+                                    <p className="text-sm text-destructive">
+                                        {statusForm.errors.status}
+                                    </p>
+                                )}
                             </div>
-                            {statusForm.errors.status && (
-                                <p className="text-sm text-destructive">
-                                    {statusForm.errors.status}
-                                </p>
-                            )}
-                        </div>
+                        ) : (
+                            <p className="text-sm text-muted-foreground">
+                                Only Central Office and Regional Office
+                                administrators can change this status.
+                            </p>
+                        )}
                     </CardContent>
                 </Card>
             </div>

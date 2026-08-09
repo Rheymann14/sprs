@@ -33,7 +33,7 @@ class IncidentController extends Controller
         $requestedRegionId = $request->string('region_id')->trim()->toString();
         $regionId = $user->isSuperAdmin()
             ? Region::query()->whereKey($requestedRegionId)->value('id')
-            : $user->region_id;
+            : null;
         $year = $request->integer('year');
         $year = $year >= 1000 && $year <= 9999 ? $year : null;
         $incidentTypeId = $request->string('incident_type_id')->trim()->toString();
@@ -51,7 +51,21 @@ class IncidentController extends Controller
         return Inertia::render('incidents/index', [
             'incidents' => Incident::query()
                 ->select('id', 'incident_number', 'incident_subcategory_id', 'region_id', 'status', 'created_at')
-                ->when($regionId !== null, fn (Builder $query) => $query->where('region_id', $regionId))
+                ->when(
+                    $user->isSuperAdmin(),
+                    fn (Builder $query) => $query->when(
+                        $regionId !== null,
+                        fn (Builder $regionQuery) => $regionQuery->where('region_id', $regionId),
+                    ),
+                    fn (Builder $query) => $query->where(function (Builder $accessQuery) use ($user): void {
+                        $accessQuery
+                            ->where('region_id', $user->region_id)
+                            ->orWhereHas(
+                                'routedRegions',
+                                fn (Builder $regionQuery) => $regionQuery->whereKey($user->region_id),
+                            );
+                    }),
+                )
                 ->with([
                     'region:id,name',
                     'subcategory:id,incident_type_id,name',
@@ -137,7 +151,7 @@ class IncidentController extends Controller
 
     public function show(Request $request, Incident $incident): Response
     {
-        abort_unless($request->user()->canAccessRegion($incident->region_id), 403);
+        abort_unless($incident->isAccessibleBy($request->user()), 403);
 
         $messageLimit = min(max($request->integer('messages', 30), 30), 150);
 
@@ -145,6 +159,8 @@ class IncidentController extends Controller
             'subcategory:id,incident_type_id,name',
             'subcategory.incidentType:id,name',
             'subcategory.statuses:id,incident_subcategory_id,name,icon,sort_order',
+            'region:id,name',
+            'routedRegions:id,name',
         ]);
 
         $messages = $incident->messages()
@@ -161,6 +177,8 @@ class IncidentController extends Controller
         $messages = $messages->take($messageLimit)->reverse()->values();
 
         $statusDefinition = $incident->managedStatusDefinition();
+        $canManageRouting = $incident->routingIsManageableBy($request->user());
+        $originatesFromCentralOffice = $incident->region->name === Region::CentralOffice;
 
         return Inertia::render('incidents/show', [
             'incident' => [
@@ -175,6 +193,7 @@ class IncidentController extends Controller
                 'status_icon' => $statusDefinition['icon'],
                 'managed_statuses' => $incident->managedStatusDefinitions()->all(),
                 'conversation_open' => $incident->conversationIsOpen(),
+                'can_manage_status' => $request->user()->can('manage-incident-statuses'),
             ],
             'conversation' => fn (): array => [
                 'messages' => $messages->map(fn ($message): array => [
@@ -196,6 +215,27 @@ class IncidentController extends Controller
                 ])->all(),
                 'has_earlier_messages' => $hasEarlierMessages,
                 'message_limit' => $messageLimit,
+            ],
+            'routing' => [
+                'origin_region' => $incident->region->name,
+                'can_manage' => $canManageRouting,
+                'routed_regions' => $incident->routedRegions
+                    ->map(fn (Region $region): array => ['id' => $region->id, 'name' => $region->name])
+                    ->values()
+                    ->all(),
+                'available_regions' => $canManageRouting
+                    ? Region::query()
+                        ->select('id', 'name')
+                        ->when(
+                            $originatesFromCentralOffice,
+                            fn (Builder $query) => $query->where('name', '!=', Region::CentralOffice),
+                            fn (Builder $query) => $query->where('name', Region::CentralOffice),
+                        )
+                        ->orderBy('name')
+                        ->get()
+                        ->map(fn (Region $region): array => ['id' => $region->id, 'name' => $region->name])
+                        ->all()
+                    : [],
             ],
         ]);
     }

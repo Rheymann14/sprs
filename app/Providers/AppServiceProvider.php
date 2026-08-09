@@ -39,6 +39,11 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('manage-user-roles', fn (User $user): bool => $user->hasRole(...UserRole::userManagerNames()));
 
         Gate::define('manage-regions', fn (User $user): bool => $user->isSuperAdmin());
+
+        Gate::define('manage-incident-statuses', fn (User $user): bool => $user->hasRole(
+            UserRole::CentralOfficeAdministrator,
+            UserRole::RegionalOfficeAdministrator,
+        ));
     }
 
     /**

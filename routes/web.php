@@ -4,6 +4,7 @@ use App\Http\Controllers\FormManagementController;
 use App\Http\Controllers\IncidentController;
 use App\Http\Controllers\IncidentFormController;
 use App\Http\Controllers\IncidentMessageController;
+use App\Http\Controllers\IncidentRoutingController;
 use App\Http\Controllers\IncidentStatusController;
 use App\Http\Controllers\IncidentSubcategoryController;
 use App\Http\Controllers\IncidentTypeController;
@@ -43,6 +44,9 @@ Route::put('incidents/{incident}', [IncidentController::class, 'update'])
 Route::patch('incidents/{incident}/status', [IncidentController::class, 'updateStatus'])
     ->middleware(['auth', 'verified'])
     ->name('incidents.status.update');
+Route::put('incidents/{incident}/routing', [IncidentRoutingController::class, 'update'])
+    ->middleware(['auth', 'verified'])
+    ->name('incidents.routing.update');
 Route::delete('incidents/{incident}', [IncidentController::class, 'destroy'])
     ->middleware(['auth', 'verified'])
     ->name('incidents.destroy');

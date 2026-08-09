@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\IncidentStatusIcon;
+use App\Enums\UserRoleGroup;
 use Database\Factories\IncidentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Collection;
@@ -10,6 +11,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection as SupportCollection;
@@ -26,6 +28,7 @@ use Illuminate\Support\Str;
  * @property Carbon|null $updated_at
  * @property-read IncidentSubcategory $subcategory
  * @property-read Region $region
+ * @property-read Collection<int, Region> $routedRegions
  * @property-read Collection<int, IncidentMessage> $messages
  */
 #[Fillable(['incident_subcategory_id', 'region_id', 'status', 'report_data'])]
@@ -53,6 +56,36 @@ class Incident extends Model
     public function region(): BelongsTo
     {
         return $this->belongsTo(Region::class);
+    }
+
+    /** @return BelongsToMany<Region, $this> */
+    public function routedRegions(): BelongsToMany
+    {
+        return $this->belongsToMany(Region::class)->withTimestamps();
+    }
+
+    public function isAccessibleBy(User $user): bool
+    {
+        return $user->isSuperAdmin()
+            || $user->region_id === $this->region_id
+            || ($user->region_id !== null && $this->routedRegions()->whereKey($user->region_id)->exists());
+    }
+
+    public function routingIsManageableBy(User $user): bool
+    {
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        if ($user->region_id !== $this->region_id) {
+            return false;
+        }
+
+        $originatesFromCentralOffice = $this->region()->where('name', Region::CentralOffice)->exists();
+
+        return $originatesFromCentralOffice
+            ? $user->roleGroup() === UserRoleGroup::CentralOffice
+            : $user->roleGroup() === UserRoleGroup::RegionalOffice;
     }
 
     /** @return HasMany<IncidentMessage, $this> */

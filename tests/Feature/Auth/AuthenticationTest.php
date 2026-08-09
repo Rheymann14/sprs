@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Models\UserRole;
 use Illuminate\Support\Facades\RateLimiter;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Fortify\Features;
@@ -26,6 +27,22 @@ test('users can authenticate using the login screen', function () {
     $this->assertAuthenticated();
     $response->assertRedirect(route('statistics'));
 });
+
+test('staff are redirected to incidents after login', function (string $roleName) {
+    $role = UserRole::query()->create(['name' => $roleName]);
+    $user = User::factory()->for($role, 'userRole')->create();
+
+    $response = $this->post(route('login.store'), [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    $this->assertAuthenticatedAs($user);
+    $response->assertRedirect(route('incidents.index'));
+})->with([
+    'CHEDCO Staff' => UserRole::CentralOfficeStaff,
+    'CHEDRO Staff' => UserRole::RegionalOfficeStaff,
+]);
 
 test('users with two factor enabled are redirected to two factor challenge', function () {
     if (! Features::canManageTwoFactorAuthentication()) {

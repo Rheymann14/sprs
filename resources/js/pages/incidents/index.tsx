@@ -5,6 +5,7 @@ import {
     CircleAlert,
     CircleCheck,
     Clock3,
+    Eye,
     FilePlus2,
     Pencil,
     Search,
@@ -18,6 +19,7 @@ import {
     destroy as destroyIncident,
     edit as editIncident,
     index as incidentsIndex,
+    show as showIncident,
 } from '@/actions/App/Http/Controllers/IncidentController';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
@@ -326,6 +328,19 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
                                                                 asChild
                                                             >
                                                                 <Link
+                                                                    href={showIncident(
+                                                                        incident.id,
+                                                                    )}
+                                                                >
+                                                                    <Eye /> View
+                                                                </Link>
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                asChild
+                                                            >
+                                                                <Link
                                                                     href={editIncident(
                                                                         incident.id,
                                                                     )}
@@ -382,7 +397,20 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
                                                     />
                                                 </div>
                                             </div>
-                                            <div className="mt-4 grid grid-cols-2 gap-2 border-t pt-4">
+                                            <div className="mt-4 grid grid-cols-3 gap-2 border-t pt-4">
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    asChild
+                                                >
+                                                    <Link
+                                                        href={showIncident(
+                                                            incident.id,
+                                                        )}
+                                                    >
+                                                        <Eye /> View
+                                                    </Link>
+                                                </Button>
                                                 <Button
                                                     size="sm"
                                                     variant="outline"

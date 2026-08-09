@@ -24,7 +24,7 @@ class IncidentStatus extends Model
     /** @use HasFactory<IncidentStatusFactory> */
     use HasFactory, HasUlids;
 
-    /** @return array<int, array{name: string, icon: string}> */
+    /** @return array<int, array{name: string, icon: 'circle-check'|'clock'|'circle-alert'}> */
     public static function defaults(): array
     {
         return [

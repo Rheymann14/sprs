@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Enums\FormFieldType;
 use App\Enums\IncidentStatusIcon;
+use App\Enums\UserRoleGroup;
 use App\Http\Requests\StoreIncidentRequest;
 use App\Http\Requests\UpdateIncidentRequest;
+use App\Http\Requests\UpdateIncidentStatusRequest;
 use App\Models\Incident;
 use App\Models\IncidentForm;
 use App\Models\IncidentStatus;
@@ -121,20 +123,83 @@ class IncidentController extends Controller
         ]);
     }
 
+    public function show(Request $request, Incident $incident): Response
+    {
+        abort_unless($incident->region_id === $request->user()?->region_id, 403);
+
+        $messageLimit = min(max($request->integer('messages', 30), 30), 150);
+
+        $incident->load([
+            'subcategory:id,incident_type_id,name',
+            'subcategory.incidentType:id,name',
+            'subcategory.statuses:id,incident_subcategory_id,name,icon,sort_order',
+        ]);
+
+        $messages = $incident->messages()
+            ->select('id', 'incident_id', 'user_id', 'message', 'created_at')
+            ->with([
+                'user:id,name,user_role_id',
+                'user.userRole:id,organization_group',
+                'attachments:id,incident_message_id,original_name,path,mime_type,size',
+            ])
+            ->latest()
+            ->limit($messageLimit + 1)
+            ->get();
+        $hasEarlierMessages = $messages->count() > $messageLimit;
+        $messages = $messages->take($messageLimit)->reverse()->values();
+
+        $statusDefinition = $incident->managedStatusDefinition();
+
+        return Inertia::render('incidents/show', [
+            'incident' => [
+                'id' => $incident->id,
+                'incident_number' => $incident->incident_number,
+                'incident_type' => $incident->subcategory->incidentType->name,
+                'subcategory' => $incident->subcategory->name,
+                'report_title' => data_get($incident->report_data, 'title', 'Incident report'),
+                'report_description' => data_get($incident->report_data, 'description'),
+                'report_sections' => $this->reportSectionsForDisplay($incident->report_data),
+                'status_label' => $statusDefinition['name'],
+                'status_icon' => $statusDefinition['icon'],
+                'managed_statuses' => $incident->managedStatusDefinitions()->all(),
+                'conversation_open' => $incident->conversationIsOpen(),
+            ],
+            'conversation' => fn (): array => [
+                'messages' => $messages->map(fn ($message): array => [
+                    'id' => $message->id,
+                    'message' => $message->message,
+                    'sender_name' => $message->user->name,
+                    'sender_label' => $message->user->userRole?->organization_group === UserRoleGroup::CentralOffice
+                        ? 'CHED CO'
+                        : 'CHED RO',
+                    'is_own' => $message->user_id === $request->user()->id,
+                    'created_at' => $message->created_at?->toIso8601String(),
+                    'attachments' => $message->attachments->map(fn ($attachment): array => [
+                        'id' => $attachment->id,
+                        'name' => $attachment->original_name,
+                        'url' => Storage::disk('public')->url($attachment->path),
+                        'mime_type' => $attachment->mime_type,
+                        'size' => $attachment->size,
+                    ])->all(),
+                ])->all(),
+                'has_earlier_messages' => $hasEarlierMessages,
+                'message_limit' => $messageLimit,
+            ],
+        ]);
+    }
+
     public function edit(Request $request, Incident $incident): Response
     {
         abort_unless($incident->region_id === $request->user()?->region_id, 403);
 
-        $incidentTypes = $this->incidentTypesForRegion($request->user()?->region_id);
+        $incidentTypes = $this->incidentTypesForRegion($request->user()->region_id);
         $incident->load('subcategory:id,incident_type_id,name');
         $selectedType = $incidentTypes->firstWhere('id', $incident->subcategory->incident_type_id);
         $selectedSubcategory = $selectedType?->subcategories->firstWhere('id', $incident->incident_subcategory_id);
         $form = $selectedSubcategory?->forms->first();
         abort_if($form === null, 404);
 
-        $savedFields = collect(data_get($incident->report_data, 'sections', []))
-            ->flatMap(fn (array $section): array => $section['fields'] ?? [])
-            ->keyBy('field_id');
+        $savedFields = $this->reportFields($incident->report_data)->keyBy('field_id');
         $fields = $form->sections->flatMap->fields;
 
         return Inertia::render('incidents/create', [
@@ -196,11 +261,22 @@ class IncidentController extends Controller
             'report_data' => $reportData,
         ]);
 
-        Storage::disk('local')->delete(
+        $this->deleteReportFiles(
             $previousFilePaths->diff($this->reportFilePaths($reportData))->all(),
         );
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Incident updated.')]);
+
+        return back();
+    }
+
+    public function updateStatus(UpdateIncidentStatusRequest $request, Incident $incident): RedirectResponse
+    {
+        $incident->update([
+            'status' => $request->validated('status'),
+        ]);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Incident status updated.')]);
 
         return back();
     }
@@ -210,9 +286,15 @@ class IncidentController extends Controller
         abort_unless($incident->region_id === $request->user()?->region_id, 403);
 
         $filePaths = $this->reportFilePaths($incident->report_data);
+        $messageFilePaths = $incident->messages()
+            ->with('attachments:id,incident_message_id,path')
+            ->get()
+            ->flatMap->attachments
+            ->pluck('path');
 
         $incident->delete();
-        Storage::disk('local')->delete($filePaths->all());
+        $this->deleteReportFiles($filePaths->all());
+        Storage::disk('public')->delete($messageFilePaths->all());
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Incident deleted.')]);
 
@@ -256,9 +338,7 @@ class IncidentController extends Controller
         ?array $previousReportData = null,
     ): array {
         $responses = $request->validated('responses', []);
-        $previousFields = collect(data_get($previousReportData, 'sections', []))
-            ->flatMap(fn (array $section): array => $section['fields'] ?? [])
-            ->keyBy('field_id');
+        $previousFields = $this->reportFields($previousReportData)->keyBy('field_id');
 
         return [
             'form_id' => $form->id,
@@ -278,7 +358,7 @@ class IncidentController extends Controller
                                 $file = $request->file("responses.{$field->id}");
                                 $value = [
                                     'name' => $file->getClientOriginalName(),
-                                    'path' => $file->store('incident-reports', 'local'),
+                                    'path' => $file->store('incident-reports', 'public'),
                                 ];
                             }
                         }
@@ -302,13 +382,145 @@ class IncidentController extends Controller
         ];
     }
 
-    /** @return \Illuminate\Support\Collection<int, string> */
+    /**
+     * @param  array<string, mixed>|null  $reportData
+     * @return \Illuminate\Support\Collection<int, string>
+     */
     private function reportFilePaths(?array $reportData): \Illuminate\Support\Collection
     {
-        return collect(data_get($reportData, 'sections', []))
-            ->flatMap(fn (array $section): array => $section['fields'] ?? [])
+        return $this->reportFields($reportData)
             ->filter(fn (array $field): bool => ($field['type'] ?? null) === FormFieldType::File->value)
             ->pluck('value.path')
             ->filter(fn (mixed $path): bool => is_string($path));
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $reportData
+     * @return array<int, array<string, mixed>>
+     */
+    private function reportSectionsForDisplay(?array $reportData): array
+    {
+        $sections = $reportData['sections'] ?? null;
+
+        if (! is_array($sections)) {
+            return [];
+        }
+
+        $displaySections = [];
+
+        foreach ($sections as $section) {
+            if (! is_array($section)) {
+                continue;
+            }
+
+            $displayFields = [];
+            $fields = $section['fields'] ?? null;
+
+            if (is_array($fields)) {
+                foreach ($fields as $field) {
+                    if (! is_array($field)) {
+                        continue;
+                    }
+
+                    $value = $field['display_value'] ?? $field['value'] ?? null;
+                    $attachment = null;
+
+                    if (($field['type'] ?? null) === FormFieldType::File->value && is_array($value)) {
+                        $path = $value['path'] ?? null;
+                        $name = $value['name'] ?? null;
+
+                        if (is_string($path)) {
+                            $attachment = [
+                                'name' => is_string($name) ? $name : basename($path),
+                                'url' => $this->reportAttachmentUrl($path),
+                                'mime_type' => $this->reportAttachmentMimeType($path),
+                            ];
+                        }
+
+                        $value = $attachment['name'] ?? null;
+                    } elseif (is_bool($value)) {
+                        $value = $value ? __('Yes') : __('No');
+                    } elseif (is_array($value)) {
+                        $value = collect($value)->filter(fn (mixed $item): bool => is_scalar($item))->implode(', ');
+                    }
+
+                    $label = $field['label'] ?? null;
+                    $displayFields[] = [
+                        'label' => is_string($label) ? $label : __('Untitled field'),
+                        'value' => filled($value) ? (string) $value : '—',
+                        'attachment' => $attachment,
+                    ];
+                }
+            }
+
+            $title = $section['title'] ?? null;
+            $description = $section['description'] ?? null;
+            $displaySections[] = [
+                'title' => is_string($title) ? $title : null,
+                'description' => is_string($description) ? $description : null,
+                'fields' => $displayFields,
+            ];
+        }
+
+        return $displaySections;
+    }
+
+    private function reportAttachmentUrl(string $path): string
+    {
+        if (Storage::disk('public')->exists($path)) {
+            return Storage::disk('public')->url($path);
+        }
+
+        return Storage::disk('local')->temporaryUrl($path, now()->addMinutes(30));
+    }
+
+    private function reportAttachmentMimeType(string $path): string
+    {
+        $disk = Storage::disk(Storage::disk('public')->exists($path) ? 'public' : 'local');
+
+        return $disk->mimeType($path) ?: 'application/octet-stream';
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $reportData
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function reportFields(?array $reportData): \Illuminate\Support\Collection
+    {
+        $sections = $reportData['sections'] ?? null;
+        $fields = [];
+
+        if (! is_array($sections)) {
+            return collect($fields);
+        }
+
+        foreach ($sections as $section) {
+            if (! is_array($section) || ! is_array($section['fields'] ?? null)) {
+                continue;
+            }
+
+            foreach ($section['fields'] as $field) {
+                if (is_array($field)) {
+                    $normalizedField = [];
+
+                    foreach ($field as $key => $value) {
+                        if (is_string($key)) {
+                            $normalizedField[$key] = $value;
+                        }
+                    }
+
+                    $fields[] = $normalizedField;
+                }
+            }
+        }
+
+        return collect($fields);
+    }
+
+    /** @param array<int, string> $paths */
+    private function deleteReportFiles(array $paths): void
+    {
+        Storage::disk('public')->delete($paths);
+        Storage::disk('local')->delete($paths);
     }
 }

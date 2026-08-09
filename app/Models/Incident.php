@@ -2,13 +2,17 @@
 
 namespace App\Models;
 
+use App\Enums\IncidentStatusIcon;
 use Database\Factories\IncidentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Str;
 
 /**
@@ -22,6 +26,7 @@ use Illuminate\Support\Str;
  * @property Carbon|null $updated_at
  * @property-read IncidentSubcategory $subcategory
  * @property-read Region $region
+ * @property-read Collection<int, IncidentMessage> $messages
  */
 #[Fillable(['incident_subcategory_id', 'region_id', 'status', 'report_data'])]
 class Incident extends Model
@@ -48,6 +53,61 @@ class Incident extends Model
     public function region(): BelongsTo
     {
         return $this->belongsTo(Region::class);
+    }
+
+    /** @return HasMany<IncidentMessage, $this> */
+    public function messages(): HasMany
+    {
+        return $this->hasMany(IncidentMessage::class);
+    }
+
+    /** @return SupportCollection<int, array{name: string, icon: string}> */
+    public function managedStatusDefinitions(): SupportCollection
+    {
+        $this->loadMissing('subcategory.statuses');
+
+        if ($this->subcategory->statuses->isEmpty()) {
+            return collect(IncidentStatus::defaults())->map(
+                fn (array $status): array => $this->normalizedManagedStatusDefinition(
+                    $status['name'],
+                    $status['icon'],
+                ),
+            );
+        }
+
+        return $this->subcategory->statuses
+            ->sortBy('sort_order')
+            ->values()
+            ->map(fn (IncidentStatus $status): array => $this->normalizedManagedStatusDefinition(
+                $status->name,
+                $status->icon->value,
+            ));
+    }
+
+    /** @return array{name: string, icon: string} */
+    public function managedStatusDefinition(): array
+    {
+        return $this->managedStatusDefinitions()->first(
+            fn (array $status): bool => Str::lower($status['name']) === Str::lower($this->status),
+        ) ?? [
+            'name' => Str::headline($this->status),
+            'icon' => match (Str::lower($this->status)) {
+                'resolved' => IncidentStatusIcon::CircleCheck->value,
+                'unresolved' => IncidentStatusIcon::CircleAlert->value,
+                default => IncidentStatusIcon::Clock->value,
+            },
+        ];
+    }
+
+    public function conversationIsOpen(): bool
+    {
+        return $this->managedStatusDefinition()['icon'] === IncidentStatusIcon::Clock->value;
+    }
+
+    /** @return array{name: string, icon: string} */
+    private function normalizedManagedStatusDefinition(string $name, string $icon): array
+    {
+        return ['name' => $name, 'icon' => $icon];
     }
 
     /**

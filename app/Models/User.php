@@ -6,8 +6,10 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -28,6 +30,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  * @property-read UserRole|null $userRole
  * @property-read Region|null $region
+ * @property-read Collection<int, IncidentMessage> $incidentMessages
  */
 #[Fillable(['name', 'email', 'password', 'user_role_id', 'region_id'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
@@ -54,6 +57,12 @@ class User extends Authenticatable
     public function region(): BelongsTo
     {
         return $this->belongsTo(Region::class);
+    }
+
+    /** @return HasMany<IncidentMessage, $this> */
+    public function incidentMessages(): HasMany
+    {
+        return $this->hasMany(IncidentMessage::class);
     }
 
     /**

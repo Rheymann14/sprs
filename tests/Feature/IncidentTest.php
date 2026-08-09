@@ -2,16 +2,22 @@
 
 use App\Enums\FormFieldType;
 use App\Enums\IncidentStatusIcon;
+use App\Enums\UserRoleGroup;
 use App\Models\FormField;
 use App\Models\FormFieldOption;
 use App\Models\FormSection;
 use App\Models\Incident;
 use App\Models\IncidentForm;
+use App\Models\IncidentMessage;
+use App\Models\IncidentMessageAttachment;
 use App\Models\IncidentStatus;
 use App\Models\IncidentSubcategory;
 use App\Models\IncidentType;
 use App\Models\Region;
 use App\Models\User;
+use App\Models\UserRole;
+use Illuminate\Database\Eloquent\Factories\Sequence;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -419,4 +425,276 @@ test('users can delete regional incidents and their attachments', function () {
 
     $this->assertModelMissing($incident);
     Storage::disk('local')->assertMissing('incident-reports/evidence.pdf');
+});
+
+test('users can view a regional incident report and its conversation', function () {
+    Storage::fake('public');
+    Storage::disk('public')->put('incident-reports/report.pdf', 'report');
+
+    $region = Region::factory()->create();
+    $regionalRole = UserRole::query()->create([
+        'name' => UserRole::RegionalOfficeStaff,
+    ]);
+    $centralRole = UserRole::query()->create([
+        'name' => UserRole::CentralOfficeStaff,
+    ]);
+    $regionalUser = User::factory()
+        ->for($region)
+        ->for($regionalRole, 'userRole')
+        ->create();
+    $centralUser = User::factory()
+        ->for($region)
+        ->for($centralRole, 'userRole')
+        ->create();
+    $subcategory = IncidentSubcategory::factory()->create();
+    IncidentStatus::factory()->for($subcategory, 'subcategory')->create([
+        'name' => 'Resolved',
+        'icon' => IncidentStatusIcon::CircleCheck,
+        'sort_order' => 0,
+    ]);
+    IncidentStatus::factory()->for($subcategory, 'subcategory')->create([
+        'name' => 'Pending',
+        'icon' => IncidentStatusIcon::Clock,
+        'sort_order' => 1,
+    ]);
+    IncidentStatus::factory()->for($subcategory, 'subcategory')->create([
+        'name' => 'Unresolved',
+        'icon' => IncidentStatusIcon::CircleAlert,
+        'sort_order' => 2,
+    ]);
+    $incident = Incident::factory()
+        ->for($region)
+        ->for($subcategory, 'subcategory')
+        ->create([
+            'status' => 'Resolved',
+            'report_data' => [
+                'title' => 'Saved incident report',
+                'sections' => [[
+                    'title' => 'Details',
+                    'fields' => [
+                        [
+                            'label' => 'Location',
+                            'type' => FormFieldType::Text->value,
+                            'value' => 'Main campus',
+                        ],
+                        [
+                            'label' => 'Evidence',
+                            'type' => FormFieldType::File->value,
+                            'value' => [
+                                'name' => 'report.pdf',
+                                'path' => 'incident-reports/report.pdf',
+                            ],
+                        ],
+                    ],
+                ]],
+            ],
+        ]);
+    $message = IncidentMessage::factory()
+        ->for($incident)
+        ->for($centralUser)
+        ->create(['message' => 'Central Office reviewed the report.']);
+    IncidentMessageAttachment::factory()->for($message, 'message')->create([
+        'original_name' => 'review.pdf',
+        'path' => 'incident-messages/review.pdf',
+        'mime_type' => 'application/pdf',
+        'size' => 2048,
+    ]);
+
+    $this->actingAs($regionalUser)
+        ->get(route('incidents.show', $incident))
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('incidents/show')
+            ->where('incident.report_title', 'Saved incident report')
+            ->where('incident.report_sections.0.fields.0.value', 'Main campus')
+            ->where('incident.report_sections.0.fields.1.attachment.name', 'report.pdf')
+            ->where('conversation.messages.0.sender_label', 'CHED CO')
+            ->where('conversation.messages.0.is_own', false)
+            ->where('conversation.messages.0.attachments.0.name', 'review.pdf')
+            ->where('conversation.has_earlier_messages', false)
+            ->where('conversation.message_limit', 30)
+            ->where('incident.status_label', 'Resolved')
+            ->where('incident.status_icon', IncidentStatusIcon::CircleCheck->value)
+            ->where('incident.conversation_open', false)
+            ->has('incident.managed_statuses', 3)
+        );
+
+    expect($regionalRole->organization_group)->toBe(UserRoleGroup::RegionalOffice)
+        ->and($centralRole->organization_group)->toBe(UserRoleGroup::CentralOffice);
+});
+
+test('incident conversations initially load only the latest messages', function () {
+    $region = Region::factory()->create();
+    $user = User::factory()->for($region)->create();
+    $incident = Incident::factory()->for($region)->create(['status' => 'Pending']);
+
+    IncidentMessage::factory()
+        ->count(35)
+        ->for($incident)
+        ->for($user)
+        ->sequence(fn (Sequence $sequence): array => [
+            'message' => "Message {$sequence->index}",
+            'created_at' => now()->addSeconds($sequence->index),
+        ])
+        ->create();
+
+    $this->actingAs($user)
+        ->get(route('incidents.show', $incident))
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('conversation.messages', 30)
+            ->where('conversation.messages.0.message', 'Message 5')
+            ->where('conversation.messages.29.message', 'Message 34')
+            ->where('conversation.has_earlier_messages', true)
+            ->where('conversation.message_limit', 30)
+        );
+
+    $this->actingAs($user)
+        ->get(route('incidents.show', [$incident, 'messages' => 60]))
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('conversation.messages', 35)
+            ->where('conversation.messages.0.message', 'Message 0')
+            ->where('conversation.has_earlier_messages', false)
+            ->where('conversation.message_limit', 60)
+        );
+});
+
+test('users can send incident messages with up to five public attachments', function () {
+    Storage::fake('public');
+
+    $region = Region::factory()->create();
+    $user = User::factory()->for($region)->create();
+    $incident = Incident::factory()->for($region)->create(['status' => 'Pending']);
+    $attachments = [
+        UploadedFile::fake()->image('photo.jpg')->size(100),
+        UploadedFile::fake()->create('document.pdf', 200, 'application/pdf'),
+    ];
+
+    $this->actingAs($user)
+        ->post(route('incidents.messages.store', $incident), [
+            'message' => 'Please review these files.',
+            'attachments' => $attachments,
+        ])
+        ->assertRedirect()
+        ->assertInertiaFlash('toast.message', 'Message sent.');
+
+    $message = $incident->messages()->with('attachments')->firstOrFail();
+
+    expect($message->message)->toBe('Please review these files.')
+        ->and($message->user_id)->toBe($user->id)
+        ->and($message->attachments)->toHaveCount(2);
+
+    $message->attachments->each(
+        fn (IncidentMessageAttachment $attachment) => Storage::disk('public')->assertExists($attachment->path),
+    );
+});
+
+test('incident message attachments enforce file count type and size limits', function () {
+    Storage::fake('public');
+
+    $region = Region::factory()->create();
+    $user = User::factory()->for($region)->create();
+    $incident = Incident::factory()->for($region)->create(['status' => 'Pending']);
+
+    $this->actingAs($user)
+        ->post(route('incidents.messages.store', $incident), [
+            'attachments' => collect(range(1, 6))
+                ->map(fn (int $index) => UploadedFile::fake()->image("photo-{$index}.png"))
+                ->all(),
+        ])
+        ->assertSessionHasErrors('attachments');
+
+    $this->actingAs($user)
+        ->post(route('incidents.messages.store', $incident), [
+            'attachments' => [UploadedFile::fake()->create('archive.zip', 100, 'application/zip')],
+        ])
+        ->assertSessionHasErrors('attachments.0');
+
+    $this->actingAs($user)
+        ->post(route('incidents.messages.store', $incident), [
+            'attachments' => [UploadedFile::fake()->create('large.pdf', 5121, 'application/pdf')],
+        ])
+        ->assertSessionHasErrors('attachments.0');
+
+    expect($incident->messages()->doesntExist())->toBeTrue();
+});
+
+test('resolved and unresolved incidents lock messages until returned to pending', function () {
+    $region = Region::factory()->create();
+    $user = User::factory()->for($region)->create();
+    $subcategory = IncidentSubcategory::factory()->create();
+    IncidentStatus::factory()->for($subcategory, 'subcategory')->create([
+        'name' => 'Resolved',
+        'icon' => IncidentStatusIcon::CircleCheck,
+        'sort_order' => 0,
+    ]);
+    IncidentStatus::factory()->for($subcategory, 'subcategory')->create([
+        'name' => 'Pending',
+        'icon' => IncidentStatusIcon::Clock,
+        'sort_order' => 1,
+    ]);
+    IncidentStatus::factory()->for($subcategory, 'subcategory')->create([
+        'name' => 'Unresolved',
+        'icon' => IncidentStatusIcon::CircleAlert,
+        'sort_order' => 2,
+    ]);
+    $incident = Incident::factory()
+        ->for($region)
+        ->for($subcategory, 'subcategory')
+        ->create(['status' => 'Pending']);
+
+    $this->actingAs($user)
+        ->patch(route('incidents.status.update', $incident), ['status' => 'Resolved'])
+        ->assertRedirect()
+        ->assertInertiaFlash('toast.message', 'Incident status updated.');
+
+    expect($incident->refresh()->status)->toBe('Resolved')
+        ->and($incident->conversationIsOpen())->toBeFalse();
+
+    $this->actingAs($user)
+        ->post(route('incidents.messages.store', $incident), ['message' => 'Closed message'])
+        ->assertForbidden();
+
+    $this->actingAs($user)
+        ->patch(route('incidents.status.update', $incident), ['status' => 'Pending'])
+        ->assertRedirect();
+
+    expect($incident->refresh()->conversationIsOpen())->toBeTrue();
+
+    $this->actingAs($user)
+        ->post(route('incidents.messages.store', $incident), ['message' => 'Reopened message'])
+        ->assertRedirect();
+
+    expect($incident->messages()->value('message'))->toBe('Reopened message');
+
+    $this->actingAs($user)
+        ->patch(route('incidents.status.update', $incident), ['status' => 'Unresolved'])
+        ->assertRedirect();
+
+    expect($incident->refresh()->conversationIsOpen())->toBeFalse();
+
+    $this->actingAs($user)
+        ->post(route('incidents.messages.store', $incident), ['message' => 'Still closed'])
+        ->assertForbidden();
+
+    $this->actingAs($user)
+        ->patch(route('incidents.status.update', $incident), ['status' => 'Unknown'])
+        ->assertSessionHasErrors('status');
+});
+
+test('users cannot view or message incidents from another region', function () {
+    $user = User::factory()->for(Region::factory())->create();
+    $incident = Incident::factory()->for(Region::factory())->create();
+
+    $this->actingAs($user)
+        ->get(route('incidents.show', $incident))
+        ->assertForbidden();
+
+    $this->actingAs($user)
+        ->post(route('incidents.messages.store', $incident), ['message' => 'Not allowed'])
+        ->assertForbidden();
+
+    $this->actingAs($user)
+        ->patch(route('incidents.status.update', $incident), ['status' => 'Pending'])
+        ->assertForbidden();
+
+    expect($incident->messages()->doesntExist())->toBeTrue();
 });

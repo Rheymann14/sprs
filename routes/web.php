@@ -3,6 +3,7 @@
 use App\Http\Controllers\FormManagementController;
 use App\Http\Controllers\IncidentController;
 use App\Http\Controllers\IncidentFormController;
+use App\Http\Controllers\IncidentMessageController;
 use App\Http\Controllers\IncidentStatusController;
 use App\Http\Controllers\IncidentSubcategoryController;
 use App\Http\Controllers\IncidentTypeController;
@@ -27,12 +28,21 @@ Route::get('incidents/report', [IncidentController::class, 'create'])
 Route::get('incidents/report/{incident}', [IncidentController::class, 'edit'])
     ->middleware(['auth', 'verified'])
     ->name('incidents.edit');
+Route::get('incidents/{incident}', [IncidentController::class, 'show'])
+    ->middleware(['auth', 'verified'])
+    ->name('incidents.show');
+Route::post('incidents/{incident}/messages', [IncidentMessageController::class, 'store'])
+    ->middleware(['auth', 'verified'])
+    ->name('incidents.messages.store');
 Route::post('incidents', [IncidentController::class, 'store'])
     ->middleware(['auth', 'verified'])
     ->name('incidents.store');
 Route::put('incidents/{incident}', [IncidentController::class, 'update'])
     ->middleware(['auth', 'verified'])
     ->name('incidents.update');
+Route::patch('incidents/{incident}/status', [IncidentController::class, 'updateStatus'])
+    ->middleware(['auth', 'verified'])
+    ->name('incidents.status.update');
 Route::delete('incidents/{incident}', [IncidentController::class, 'destroy'])
     ->middleware(['auth', 'verified'])
     ->name('incidents.destroy');

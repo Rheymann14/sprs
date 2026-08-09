@@ -554,40 +554,6 @@ export default function UserManagement({
                     </div>
                 )}
 
-                <div className="grid gap-3 rounded-xl border bg-muted/30 p-4 text-sm md:grid-cols-2 xl:grid-cols-4">
-                    <div className="space-y-1">
-                        <p className="font-medium">Super Admin</p>
-                        <p className="text-muted-foreground">
-                            Full incident access and management across every
-                            region.
-                        </p>
-                    </div>
-                    <div className="space-y-1">
-                        <p className="font-medium">
-                            CHEDCO/CHEDRO Administrator
-                        </p>
-                        <p className="text-muted-foreground">
-                            Can file, reply, edit, delete, route, and manage
-                            incident status for an accessible office.
-                        </p>
-                    </div>
-                    <div className="space-y-1">
-                        <p className="font-medium">CHEDCO/CHEDRO Staff</p>
-                        <p className="text-muted-foreground">
-                            Can file incident reports and reply to open
-                            conversations. Cannot edit, delete, route, or change
-                            status.
-                        </p>
-                    </div>
-                    <div className="space-y-1">
-                        <p className="font-medium">Agency or custom role</p>
-                        <p className="text-muted-foreground">
-                            View-only incident access for its assigned region.
-                            Cannot file reports or participate in conversations.
-                        </p>
-                    </div>
-                </div>
-
                 <Card className={activeTab === 'users' ? undefined : 'hidden'}>
                     <CardHeader className="gap-4 sm:flex-row sm:items-end sm:justify-between">
                         <div className="space-y-1.5">

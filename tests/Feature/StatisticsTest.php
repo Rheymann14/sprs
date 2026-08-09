@@ -7,14 +7,30 @@ use App\Models\IncidentSubcategory;
 use App\Models\IncidentType;
 use App\Models\Region;
 use App\Models\User;
+use App\Models\UserRole;
 use Inertia\Testing\AssertableInertia as Assert;
+
+function statisticsAdministrator(Region $region, string $roleName = UserRole::RegionalOfficeAdministrator): User
+{
+    $role = UserRole::query()->firstOrCreate(['name' => $roleName]);
+
+    return User::factory()->for($region)->for($role, 'userRole')->create();
+}
 
 test('guests are redirected to the login page', function () {
     $this->get(route('statistics'))->assertRedirect(route('login'));
 });
 
-test('authenticated users can visit the statistics page', function () {
+test('staff cannot visit the statistics page', function () {
     $this->actingAs(User::factory()->create())
+        ->get(route('statistics'))
+        ->assertForbidden();
+});
+
+test('office administrators can visit the statistics page', function () {
+    $region = Region::factory()->create();
+
+    $this->actingAs(statisticsAdministrator($region))
         ->get(route('statistics'))
         ->assertInertia(fn (Assert $page) => $page
             ->component('statistics')
@@ -27,7 +43,7 @@ test('authenticated users can visit the statistics page', function () {
 test('statistics group regional incident reports by year type and subcategory', function () {
     $region = Region::factory()->create();
     $otherRegion = Region::factory()->create();
-    $user = User::factory()->for($region)->create();
+    $user = statisticsAdministrator($region);
     $incidentType = IncidentType::factory()->create(['name' => 'Child Protection']);
     $subcategory = IncidentSubcategory::factory()->for($incidentType)->create([
         'name' => 'Bullying',
@@ -88,11 +104,34 @@ test('statistics group regional incident reports by year type and subcategory', 
 
 test('authenticated users receive their region name', function () {
     $region = Region::factory()->create(['name' => 'Region IV-A']);
-    $user = User::factory()->for($region)->create();
+    $user = statisticsAdministrator($region);
 
     $this->actingAs($user)
         ->get(route('statistics'))
         ->assertInertia(fn (Assert $page) => $page
             ->where('auth.user.region.name', 'Region IV-A')
+        );
+});
+
+test('super admins can view all statistics and filter by region', function () {
+    $centralRegion = Region::query()->firstOrCreate(['name' => Region::CentralOffice]);
+    $regionalOffice = Region::factory()->create();
+    $superAdmin = statisticsAdministrator($centralRegion, UserRole::SuperAdmin);
+    Incident::factory()->for($centralRegion)->create();
+    Incident::factory()->count(2)->for($regionalOffice)->create();
+
+    $this->actingAs($superAdmin)
+        ->get(route('statistics'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('statistics.total', 3)
+            ->where('filters.region_id', '')
+            ->has('regions', 2)
+        );
+
+    $this->actingAs($superAdmin)
+        ->get(route('statistics', ['region_id' => $regionalOffice->id]))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('statistics.total', 2)
+            ->where('filters.region_id', $regionalOffice->id)
         );
 });

@@ -15,7 +15,7 @@ class IncidentFormController extends Controller
     public function update(UpdateIncidentFormRequest $request, IncidentSubcategory $incidentSubcategory): RedirectResponse
     {
         $validated = $request->validated();
-        $regionId = $request->user()->region_id;
+        $regionId = $validated['region_id'];
 
         DB::transaction(function () use ($incidentSubcategory, $regionId, $validated): void {
             $form = $incidentSubcategory->forms()->updateOrCreate(['region_id' => $regionId], [
@@ -59,6 +59,8 @@ class IncidentFormController extends Controller
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Form saved.')]);
 
-        return to_route('form-management.index');
+        return $request->user()->isSuperAdmin()
+            ? to_route('form-management.index', ['region_id' => $regionId])
+            : to_route('form-management.index');
     }
 }

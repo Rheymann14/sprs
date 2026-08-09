@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Incident;
 use App\Models\IncidentStatus;
 use App\Models\IncidentSubcategory;
+use App\Models\Region;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,11 @@ class StatisticsController extends Controller
 {
     public function __invoke(Request $request): Response
     {
+        $user = $request->user();
+        $requestedRegionId = $request->string('region_id')->trim()->toString();
+        $regionId = $user->isSuperAdmin()
+            ? Region::query()->whereKey($requestedRegionId)->value('id')
+            : $user->region_id;
         $yearExpression = match (DB::connection()->getDriverName()) {
             'sqlite' => "CAST(strftime('%Y', created_at) AS INTEGER)",
             'pgsql' => 'EXTRACT(YEAR FROM created_at)::INTEGER',
@@ -26,7 +32,7 @@ class StatisticsController extends Controller
             ->select('incident_subcategory_id', 'status')
             ->selectRaw("{$yearExpression} as year")
             ->selectRaw('COUNT(*) as incident_count')
-            ->where('region_id', $request->user()?->region_id)
+            ->when($regionId !== null, fn ($query) => $query->where('region_id', $regionId))
             ->groupBy('incident_subcategory_id', 'status')
             ->groupByRaw($yearExpression)
             ->get();
@@ -102,6 +108,12 @@ class StatisticsController extends Controller
                 'status_counts' => $statusCounts,
                 'rows' => $rows,
             ],
+            'filters' => [
+                'region_id' => $regionId ?? '',
+            ],
+            'regions' => $user->isSuperAdmin()
+                ? Region::query()->select('id', 'name')->orderBy('name')->get()
+                : [],
         ]);
     }
 }

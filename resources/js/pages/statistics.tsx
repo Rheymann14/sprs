@@ -1,4 +1,4 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import {
     CircleAlert,
     CircleCheck,
@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { index as incidentsIndex } from '@/actions/App/Http/Controllers/IncidentController';
 import Heading from '@/components/heading';
+import { SearchableCommand } from '@/components/searchable-command';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { statistics } from '@/routes';
@@ -37,6 +38,10 @@ type StatisticsProps = {
         status_counts: StatusCount[];
         rows: StatisticsRow[];
     };
+    filters: {
+        region_id: string;
+    };
+    regions: Array<{ id: string; name: string }>;
 };
 
 const statusAppearances = {
@@ -106,16 +111,57 @@ function CountCard({
     );
 }
 
-export default function Statistics({ statistics: counts }: StatisticsProps) {
+export default function Statistics({
+    statistics: counts,
+    filters,
+    regions,
+}: StatisticsProps) {
+    const filterByRegion = (regionId: string) => {
+        router.get(
+            statistics.url({
+                query: {
+                    region_id: regionId === 'all' ? undefined : regionId,
+                },
+            }),
+            {},
+            {
+                only: ['statistics', 'filters'],
+                preserveScroll: true,
+                preserveState: true,
+                replace: true,
+            },
+        );
+    };
+
     return (
         <>
             <Head title="Statistics" />
 
             <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6">
-                <Heading
-                    title="Statistics"
-                    description="Incident totals and managed status counts for saved reports in your region."
-                />
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <Heading
+                        title="Statistics"
+                        description="Incident totals and managed status counts for the regions you can access."
+                    />
+                    {regions.length > 0 && (
+                        <div className="w-full sm:w-64">
+                            <SearchableCommand
+                                value={filters.region_id || 'all'}
+                                options={[
+                                    { value: 'all', label: 'All regions' },
+                                    ...regions.map((region) => ({
+                                        value: region.id,
+                                        label: region.name,
+                                    })),
+                                ]}
+                                placeholder="Filter by region"
+                                searchPlaceholder="Search regions..."
+                                emptyMessage="No regions found."
+                                onValueChange={filterByRegion}
+                            />
+                        </div>
+                    )}
+                </div>
 
                 {counts.rows.length > 0 ? (
                     <div className="flex flex-col gap-8">
@@ -133,6 +179,8 @@ export default function Statistics({ statistics: counts }: StatisticsProps) {
                                             incident_type_id:
                                                 row.incident_type_id,
                                             subcategory_id: row.subcategory_id,
+                                            region_id:
+                                                filters.region_id || undefined,
                                         },
                                     }),
                                 },
@@ -150,6 +198,8 @@ export default function Statistics({ statistics: counts }: StatisticsProps) {
                                                 row.incident_type_id,
                                             subcategory_id: row.subcategory_id,
                                             status: status.name,
+                                            region_id:
+                                                filters.region_id || undefined,
                                         },
                                     }),
                                 })),
@@ -209,7 +259,8 @@ export default function Statistics({ statistics: counts }: StatisticsProps) {
                                 No incident reports yet
                             </p>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                Saved reports in your region will appear here.
+                                Saved reports for the selected region will
+                                appear here.
                             </p>
                         </div>
                     </div>

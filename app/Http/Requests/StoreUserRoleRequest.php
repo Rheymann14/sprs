@@ -16,7 +16,7 @@ class StoreUserRoleRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user()?->can('manage-user-directories') ?? false;
+        return $this->user()?->can('manage-user-roles') ?? false;
     }
 
     /**
@@ -29,7 +29,14 @@ class StoreUserRoleRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255', Rule::unique(UserRole::class, 'name')],
             'display_name' => ['required', 'string', 'max:255', Rule::unique(UserRole::class, 'display_name')],
-            'organization_group' => ['required', Rule::enum(UserRoleGroup::class)],
+            'organization_group' => [
+                'required',
+                Rule::enum(UserRoleGroup::class),
+                Rule::when(
+                    ! $this->user()->isSuperAdmin(),
+                    Rule::in([$this->user()->roleGroup()?->value]),
+                ),
+            ],
         ];
     }
 

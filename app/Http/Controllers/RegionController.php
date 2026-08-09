@@ -22,7 +22,13 @@ class RegionController extends Controller
 
     public function destroy(Request $request, Region $region): RedirectResponse
     {
-        abort_unless($request->user()?->can('manage-user-directories'), 403);
+        abort_unless($request->user()?->can('manage-regions'), 403);
+
+        if ($region->name === Region::CentralOffice) {
+            throw ValidationException::withMessages([
+                'region' => __('CHED Central Office cannot be deleted.'),
+            ]);
+        }
 
         if ($region->users()->exists() || $region->incidents()->exists() || $region->incidentForms()->exists()) {
             throw ValidationException::withMessages([

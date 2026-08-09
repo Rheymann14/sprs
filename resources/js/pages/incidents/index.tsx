@@ -22,6 +22,7 @@ import {
     show as showIncident,
 } from '@/actions/App/Http/Controllers/IncidentController';
 import Heading from '@/components/heading';
+import { SearchableCommand } from '@/components/searchable-command';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -46,6 +47,7 @@ type Incident = {
     incident_number: string;
     incident_type: string;
     subcategory: string;
+    region: string;
     status: string;
     status_label: string;
     status_icon: StatusIcon;
@@ -64,6 +66,7 @@ type PaginatedIncidents = {
 
 type IncidentsProps = {
     incidents: PaginatedIncidents;
+    regions: Array<{ id: string; name: string }>;
     filters: {
         search: string;
         year: number | null;
@@ -72,6 +75,7 @@ type IncidentsProps = {
         subcategory_id: string;
         subcategory: string | null;
         status: string;
+        region_id: string;
     };
 };
 
@@ -104,7 +108,11 @@ function IncidentStatusBadge({ incident }: { incident: Incident }) {
     );
 }
 
-export default function Incidents({ incidents, filters }: IncidentsProps) {
+export default function Incidents({
+    incidents,
+    filters,
+    regions,
+}: IncidentsProps) {
     const [searchQuery, setSearchQuery] = useState(filters.search);
     const [deletingIncident, setDeletingIncident] = useState<Incident | null>(
         null,
@@ -115,6 +123,7 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
         incident_type_id: filters.incident_type_id || undefined,
         subcategory_id: filters.subcategory_id || undefined,
         status: filters.status || undefined,
+        region_id: filters.region_id || undefined,
     };
     const hasStatisticsFilters = Boolean(
         filters.year ||
@@ -156,6 +165,25 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
         );
     };
 
+    const filterByRegion = (regionId: string) => {
+        router.get(
+            incidentsIndex.url({
+                query: {
+                    ...statisticsFilters,
+                    search: filters.search || undefined,
+                    region_id: regionId === 'all' ? undefined : regionId,
+                },
+            }),
+            {},
+            {
+                only: ['incidents', 'filters'],
+                preserveScroll: true,
+                preserveState: true,
+                replace: true,
+            },
+        );
+    };
+
     const deleteSelectedIncident = () => {
         if (!deletingIncident) {
             return;
@@ -175,7 +203,7 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <Heading
                         title="Incidents"
-                        description="Search and review incidents reported in your region."
+                        description="Search and review incidents for the regions you can access."
                     />
                     <Button asChild>
                         <Link href={createIncident()}>
@@ -231,6 +259,9 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
                                                     search:
                                                         filters.search ||
                                                         undefined,
+                                                    region_id:
+                                                        filters.region_id ||
+                                                        undefined,
                                                 },
                                             })}
                                         >
@@ -244,6 +275,27 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
                             className="flex w-full flex-wrap gap-2 sm:w-auto"
                             onSubmit={searchIncidents}
                         >
+                            {regions.length > 0 && (
+                                <div className="min-w-48 flex-1 sm:w-56">
+                                    <SearchableCommand
+                                        value={filters.region_id || 'all'}
+                                        options={[
+                                            {
+                                                value: 'all',
+                                                label: 'All regions',
+                                            },
+                                            ...regions.map((region) => ({
+                                                value: region.id,
+                                                label: region.name,
+                                            })),
+                                        ]}
+                                        placeholder="Filter by region"
+                                        searchPlaceholder="Search regions..."
+                                        emptyMessage="No regions found."
+                                        onValueChange={filterByRegion}
+                                    />
+                                </div>
+                            )}
                             <Input
                                 type="search"
                                 value={searchQuery}
@@ -287,6 +339,11 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
                                                 <th className="px-5 py-3.5 font-medium">
                                                     Status
                                                 </th>
+                                                {regions.length > 0 && (
+                                                    <th className="px-5 py-3.5 font-medium">
+                                                        Region
+                                                    </th>
+                                                )}
                                                 <th className="px-5 py-3.5 text-right font-medium">
                                                     Actions
                                                 </th>
@@ -320,6 +377,11 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
                                                             incident={incident}
                                                         />
                                                     </td>
+                                                    {regions.length > 0 && (
+                                                        <td className="px-5 py-4 text-muted-foreground">
+                                                            {incident.region}
+                                                        </td>
+                                                    )}
                                                     <td className="px-5 py-4">
                                                         <div className="flex justify-end gap-2">
                                                             <Button
@@ -390,6 +452,11 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
                                                     <p className="text-sm text-muted-foreground">
                                                         {incident.subcategory}
                                                     </p>
+                                                    {regions.length > 0 && (
+                                                        <p className="mt-1 text-xs text-muted-foreground">
+                                                            {incident.region}
+                                                        </p>
+                                                    )}
                                                 </div>
                                                 <div className="shrink-0">
                                                     <IncidentStatusBadge
@@ -550,7 +617,7 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
                                             ? 'Try a different incident number, title, subcategory, or status.'
                                             : hasStatisticsFilters
                                               ? 'No incidents match the selected statistics filters.'
-                                              : 'Incidents reported in your region will appear here.'}
+                                              : 'Incidents for the selected region will appear here.'}
                                     </p>
                                 </div>
                             </div>

@@ -698,3 +698,38 @@ test('users cannot view or message incidents from another region', function () {
 
     expect($incident->messages()->doesntExist())->toBeTrue();
 });
+
+test('super admins can access and filter incidents across regions', function () {
+    $centralRegion = Region::query()->firstOrCreate(['name' => Region::CentralOffice]);
+    $regionalOffice = Region::factory()->create();
+    $superAdminRole = UserRole::query()->create(['name' => UserRole::SuperAdmin]);
+    $superAdmin = User::factory()
+        ->for($centralRegion)
+        ->for($superAdminRole, 'userRole')
+        ->create();
+    $centralIncident = Incident::factory()->for($centralRegion)->create();
+    $regionalIncident = Incident::factory()->for($regionalOffice)->create(['status' => 'Pending']);
+
+    $this->actingAs($superAdmin)
+        ->get(route('incidents.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('incidents.total', 2)
+            ->where('filters.region_id', '')
+            ->has('regions', 2)
+        );
+
+    $this->actingAs($superAdmin)
+        ->get(route('incidents.index', ['region_id' => $regionalOffice->id]))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('incidents.total', 1)
+            ->where('incidents.data.0.id', $regionalIncident->id)
+            ->where('incidents.data.0.region', $regionalOffice->name)
+            ->where('filters.region_id', $regionalOffice->id)
+        );
+
+    $this->actingAs($superAdmin)
+        ->get(route('incidents.show', $regionalIncident))
+        ->assertSuccessful();
+
+    expect($centralIncident->region_id)->toBe($centralRegion->id);
+});

@@ -41,11 +41,14 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => fn () => $request->user()?->loadMissing([
                     'region:id,name',
-                    'userRole:id,name',
+                    'userRole:id,name,organization_group',
                 ]),
                 'permissions' => [
+                    'view_statistics' => $request->user()?->can('view-statistics') ?? false,
                     'manage_forms' => $request->user()?->can('manage-forms') ?? false,
                     'manage_users' => $request->user()?->can('manage-users') ?? false,
+                    'manage_user_roles' => $request->user()?->can('manage-user-roles') ?? false,
+                    'manage_regions' => $request->user()?->can('manage-regions') ?? false,
                 ],
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',

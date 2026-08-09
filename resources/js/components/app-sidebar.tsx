@@ -1,8 +1,6 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
-    BookOpen,
     ClipboardList,
-    FolderGit2,
     ChartNoAxesColumnIncreasing,
     Siren,
     Users,
@@ -34,11 +32,15 @@ export function AppSidebar() {
     const userManagementUrl = userManagement();
 
     const mainNavItems: NavItem[] = [
-        {
-            title: 'Statistics',
-            href: statisticsUrl,
-            icon: ChartNoAxesColumnIncreasing,
-        },
+        ...(auth.permissions.view_statistics
+            ? [
+                  {
+                      title: 'Statistics',
+                      href: statisticsUrl,
+                      icon: ChartNoAxesColumnIncreasing,
+                  },
+              ]
+            : []),
         {
             title: 'Incidents',
             href: incidentsUrl,
@@ -64,9 +66,7 @@ export function AppSidebar() {
             : []),
     ];
 
-    const footerNavItems: NavItem[] = [
-      
-    ];
+    const footerNavItems: NavItem[] = [];
 
     return (
         <Sidebar collapsible="icon" variant="inset">
@@ -74,7 +74,14 @@ export function AppSidebar() {
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton size="lg" asChild>
-                            <Link href={statisticsUrl} prefetch>
+                            <Link
+                                href={
+                                    auth.permissions.view_statistics
+                                        ? statisticsUrl
+                                        : incidentsUrl
+                                }
+                                prefetch
+                            >
                                 <AppLogo />
                             </Link>
                         </SidebarMenuButton>

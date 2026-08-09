@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\FormFieldType;
+use App\Models\Incident;
 use App\Models\IncidentForm;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -79,14 +80,20 @@ class StoreIncidentRequest extends FormRequest
         return once(function (): ?IncidentForm {
             $subcategoryId = $this->input('incident_subcategory_id');
 
-            if (! is_string($subcategoryId) || $this->user()?->region_id === null) {
+            $incident = $this->route('incident');
+            $regionId = $incident instanceof Incident
+                && $this->user()?->canAccessRegion($incident->region_id)
+                    ? $incident->region_id
+                    : $this->user()?->region_id;
+
+            if (! is_string($subcategoryId) || $regionId === null) {
                 return null;
             }
 
             return IncidentForm::query()
                 ->select('id', 'incident_subcategory_id', 'region_id', 'title', 'description')
                 ->where('incident_subcategory_id', $subcategoryId)
-                ->where('region_id', $this->user()->region_id)
+                ->where('region_id', $regionId)
                 ->with([
                     'subcategory:id',
                     'subcategory.statuses:id,incident_subcategory_id,name,icon,sort_order',

@@ -20,19 +20,40 @@ class UserManagementController extends Controller
 {
     public function index(Request $request): Response
     {
+        $manager = $request->user();
         $search = $request->string('search')->trim()->toString();
         $roleSearch = $request->string('role_search')->trim()->toString();
         $regionSearch = $request->string('region_search')->trim()->toString();
-        $regionId = $request->user()?->region_id;
-        $canManageDirectories = $request->user()?->can('manage-user-directories') ?? false;
+        $requestedRegionId = $request->string('region_id')->trim()->toString();
+        $regionId = $manager->isSuperAdmin()
+            ? Region::query()->whereKey($requestedRegionId)->value('id')
+            : $manager->region_id;
+        $canManageRoles = $manager->can('manage-user-roles');
+        $canManageRegions = $manager->can('manage-regions');
         $requestedTab = $request->string('tab')->toString();
-        $activeTab = $canManageDirectories && in_array($requestedTab, ['roles', 'regions'], true)
-            ? $requestedTab
-            : 'users';
+        $activeTab = match ($requestedTab) {
+            'roles' => $canManageRoles ? 'roles' : 'users',
+            'regions' => $canManageRegions ? 'regions' : 'users',
+            default => 'users',
+        };
         $assignmentGroups = UserRole::assignmentGroups();
+
+        if (! $manager->isSuperAdmin()) {
+            $managerGroupLabel = $manager->roleGroup()?->label();
+            $assignmentGroups = collect($assignmentGroups)
+                ->only($managerGroupLabel)
+                ->map(function (array $roles): array {
+                    unset($roles[UserRole::SuperAdmin]);
+
+                    return $roles;
+                })
+                ->all();
+        }
+
         $customRoles = UserRole::query()
             ->select('name', 'display_name', 'organization_group')
             ->where('is_system', false)
+            ->when(! $manager->isSuperAdmin(), fn (Builder $query) => $query->where('organization_group', $manager->roleGroup()?->value))
             ->orderBy('display_name')
             ->get();
 
@@ -53,7 +74,7 @@ class UserManagementController extends Controller
         return Inertia::render('user-management/index', [
             'users' => User::query()
                 ->select('id', 'name', 'email', 'user_role_id', 'region_id', 'created_at')
-                ->where('region_id', $regionId)
+                ->when($regionId !== null, fn (Builder $query) => $query->where('region_id', $regionId))
                 ->with(['userRole:id,name,display_name', 'region:id,name'])
                 ->when($search !== '', function (Builder $query) use ($matchingRoleNames, $search): void {
                     $query->where(function (Builder $searchQuery) use ($matchingRoleNames, $search): void {
@@ -85,15 +106,17 @@ class UserManagementController extends Controller
                     'region_id' => $user->region_id ?? '',
                     'created_at' => $user->created_at?->toIso8601String(),
                     'created_at_display' => $user->created_at?->format('M d, Y'),
-                    'can_delete' => $request->user()?->isNot($user) ?? false,
+                    'can_delete' => $manager->isNot($user) && $manager->canAccessRegion($user->region_id),
                 ]),
             'filters' => [
                 'search' => $search,
                 'role_search' => $roleSearch,
                 'region_search' => $regionSearch,
+                'region_id' => $regionId ?? '',
                 'tab' => $activeTab,
             ],
-            'canManageDirectories' => $canManageDirectories,
+            'canManageRoles' => $canManageRoles,
+            'canManageRegions' => $canManageRegions,
             'roleGroupOptions' => collect(UserRoleGroup::cases())
                 ->map(fn (UserRoleGroup $group): array => [
                     'value' => $group->value,
@@ -110,10 +133,11 @@ class UserManagementController extends Controller
                         ->values(),
                 ])
                 ->values(),
-            'roles' => fn () => $canManageDirectories
+            'roles' => fn () => $canManageRoles
                 ? UserRole::query()
                     ->select('id', 'name', 'display_name', 'organization_group', 'is_system', 'created_at')
                     ->withCount('users')
+                    ->when(! $manager->isSuperAdmin(), fn (Builder $query) => $query->where('organization_group', $manager->roleGroup()?->value))
                     ->when($roleSearch !== '', function (Builder $query) use ($matchingManagedRoleNames, $roleSearch): void {
                         $query->where(function (Builder $searchQuery) use ($matchingManagedRoleNames, $roleSearch): void {
                             $searchQuery
@@ -137,11 +161,11 @@ class UserManagementController extends Controller
                 : null,
             'regions' => Region::query()
                 ->select('id', 'name')
-                ->whereKey($regionId)
+                ->when(! $manager->isSuperAdmin(), fn (Builder $query) => $query->whereKey($manager->region_id))
                 ->withCount('users')
                 ->orderBy('name')
                 ->get(),
-            'managedRegions' => fn () => $canManageDirectories
+            'managedRegions' => fn () => $canManageRegions
                 ? Region::query()
                     ->select('id', 'name', 'created_at')
                     ->withCount(['users', 'incidents', 'incidentForms'])
@@ -153,7 +177,8 @@ class UserManagementController extends Controller
                         'id' => $region->id,
                         'name' => $region->name,
                         'users_count' => $region->users_count,
-                        'can_delete' => $region->users_count === 0
+                        'can_delete' => $region->name !== Region::CentralOffice
+                            && $region->users_count === 0
                             && $region->incidents_count === 0
                             && $region->incident_forms_count === 0,
                     ])
@@ -165,7 +190,7 @@ class UserManagementController extends Controller
     {
         $validated = $request->validated();
 
-        DB::transaction(function () use ($request, $validated): void {
+        DB::transaction(function () use ($validated): void {
             $role = UserRole::query()->firstOrCreate([
                 'name' => $validated['user_role'],
             ]);
@@ -175,7 +200,7 @@ class UserManagementController extends Controller
                 'email' => $validated['email'],
                 'password' => $validated['password'],
                 'user_role_id' => $role->id,
-                'region_id' => $request->user()->region_id,
+                'region_id' => $validated['region_id'],
             ]);
         });
 
@@ -186,7 +211,7 @@ class UserManagementController extends Controller
 
     public function update(UpdateUserRequest $request, User $user): RedirectResponse
     {
-        abort_unless($request->user()?->region_id === $user->region_id, 404);
+        abort_unless($request->user()->canAccessRegion($user->region_id), 404);
 
         $validated = $request->validated();
 
@@ -199,7 +224,7 @@ class UserManagementController extends Controller
                 'name' => $validated['name'],
                 'email' => $validated['email'],
                 'user_role_id' => $role->id,
-                'region_id' => $request->user()->region_id,
+                'region_id' => $validated['region_id'],
             ];
 
             if ($request->filled('password')) {
@@ -216,7 +241,7 @@ class UserManagementController extends Controller
 
     public function destroy(Request $request, User $user): RedirectResponse
     {
-        abort_unless($request->user()?->region_id === $user->region_id, 404);
+        abort_unless($request->user()->canAccessRegion($user->region_id), 404);
         abort_if($request->user()?->is($user), 403, 'You cannot delete your own account.');
 
         $user->delete();

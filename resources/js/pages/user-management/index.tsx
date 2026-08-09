@@ -123,9 +123,11 @@ type UserManagementProps = {
         search: string;
         role_search: string;
         region_search: string;
+        region_id: string;
         tab: ManagementTab;
     };
-    canManageDirectories: boolean;
+    canManageRoles: boolean;
+    canManageRegions: boolean;
     roleGroups: RoleGroup[];
     roleGroupOptions: CommandOption[];
     roles: PaginatedDirectory<ManagedRole> | null;
@@ -138,7 +140,8 @@ type ManagementTab = 'users' | 'roles' | 'regions';
 export default function UserManagement({
     users,
     filters,
-    canManageDirectories,
+    canManageRoles,
+    canManageRegions,
     roleGroups,
     roleGroupOptions,
     roles,
@@ -206,6 +209,10 @@ export default function UserManagement({
             })),
         [regions],
     );
+    const regionFilterOptions = useMemo<CommandOption[]>(
+        () => [{ value: 'all', label: 'All regions' }, ...regionOptions],
+        [regionOptions],
+    );
 
     const submit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -221,7 +228,10 @@ export default function UserManagement({
         event.preventDefault();
         router.get(
             userManagement.url({
-                query: { search: searchQuery.trim() || undefined },
+                query: {
+                    search: searchQuery.trim() || undefined,
+                    region_id: filters.region_id || undefined,
+                },
             }),
             {},
             {
@@ -236,7 +246,27 @@ export default function UserManagement({
     const clearSearch = () => {
         setSearchQuery('');
         router.get(
-            userManagement.url(),
+            userManagement.url({
+                query: { region_id: filters.region_id || undefined },
+            }),
+            {},
+            {
+                only: ['users', 'filters'],
+                preserveScroll: true,
+                preserveState: true,
+                replace: true,
+            },
+        );
+    };
+
+    const filterUsersByRegion = (regionId: string) => {
+        router.get(
+            userManagement.url({
+                query: {
+                    search: filters.search || undefined,
+                    region_id: regionId === 'all' ? undefined : regionId,
+                },
+            }),
             {},
             {
                 only: ['users', 'filters'],
@@ -310,6 +340,7 @@ export default function UserManagement({
                     search: filters.search || undefined,
                     role_search: roleSearchQuery.trim() || undefined,
                     region_search: filters.region_search || undefined,
+                    region_id: filters.region_id || undefined,
                 },
             }),
             {},
@@ -325,7 +356,12 @@ export default function UserManagement({
     const clearRoleSearch = () => {
         setRoleSearchQuery('');
         router.get(
-            userManagement.url({ query: { tab: 'roles' } }),
+            userManagement.url({
+                query: {
+                    tab: 'roles',
+                    region_id: filters.region_id || undefined,
+                },
+            }),
             {},
             {
                 only: ['roles', 'filters'],
@@ -345,6 +381,7 @@ export default function UserManagement({
                     search: filters.search || undefined,
                     role_search: filters.role_search || undefined,
                     region_search: regionSearchQuery.trim() || undefined,
+                    region_id: filters.region_id || undefined,
                 },
             }),
             {},
@@ -453,23 +490,23 @@ export default function UserManagement({
                             <UserPlus /> Add user
                         </Button>
                     )}
-                    {activeTab === 'roles' && canManageDirectories && (
+                    {activeTab === 'roles' && canManageRoles && (
                         <Button onClick={() => setAddRoleOpen(true)}>
                             <Plus /> Add role
                         </Button>
                     )}
-                    {activeTab === 'regions' && canManageDirectories && (
+                    {activeTab === 'regions' && canManageRegions && (
                         <Button onClick={() => setAddRegionOpen(true)}>
                             <Plus /> Add region
                         </Button>
                     )}
                 </div>
 
-                {canManageDirectories && (
+                {canManageRoles && (
                     <div
                         role="tablist"
                         aria-label="User management sections"
-                        className="grid w-full grid-cols-3 gap-1 rounded-xl border bg-muted/40 p-1 sm:w-fit"
+                        className={`grid w-full gap-1 rounded-xl border bg-muted/40 p-1 sm:w-fit ${canManageRegions ? 'grid-cols-3' : 'grid-cols-2'}`}
                     >
                         <Button
                             type="button"
@@ -497,19 +534,23 @@ export default function UserManagement({
                             <ShieldCheck />
                             <span className="truncate">Role</span>
                         </Button>
-                        <Button
-                            type="button"
-                            role="tab"
-                            variant={
-                                activeTab === 'regions' ? 'secondary' : 'ghost'
-                            }
-                            aria-selected={activeTab === 'regions'}
-                            className="min-w-0"
-                            onClick={() => setActiveTab('regions')}
-                        >
-                            <MapPinned />
-                            <span className="truncate">Region</span>
-                        </Button>
+                        {canManageRegions && (
+                            <Button
+                                type="button"
+                                role="tab"
+                                variant={
+                                    activeTab === 'regions'
+                                        ? 'secondary'
+                                        : 'ghost'
+                                }
+                                aria-selected={activeTab === 'regions'}
+                                className="min-w-0"
+                                onClick={() => setActiveTab('regions')}
+                            >
+                                <MapPinned />
+                                <span className="truncate">Region</span>
+                            </Button>
+                        )}
                     </div>
                 )}
 
@@ -528,6 +569,18 @@ export default function UserManagement({
                             className="flex w-full flex-wrap gap-2 sm:w-auto"
                             onSubmit={searchUsers}
                         >
+                            {regions.length > 1 && (
+                                <div className="min-w-48 flex-1 sm:w-56">
+                                    <SearchableCommand
+                                        value={filters.region_id || 'all'}
+                                        options={regionFilterOptions}
+                                        placeholder="Filter by region"
+                                        searchPlaceholder="Search regions..."
+                                        emptyMessage="No regions found."
+                                        onValueChange={filterUsersByRegion}
+                                    />
+                                </div>
+                            )}
                             <Input
                                 type="search"
                                 value={searchQuery}
@@ -797,6 +850,9 @@ export default function UserManagement({
                                                             search:
                                                                 filters.search ||
                                                                 undefined,
+                                                            region_id:
+                                                                filters.region_id ||
+                                                                undefined,
                                                             page:
                                                                 users.current_page -
                                                                 1,
@@ -836,6 +892,9 @@ export default function UserManagement({
                                                         query: {
                                                             search:
                                                                 filters.search ||
+                                                                undefined,
+                                                            region_id:
+                                                                filters.region_id ||
                                                                 undefined,
                                                             page:
                                                                 users.current_page +
@@ -1061,6 +1120,9 @@ export default function UserManagement({
                                                                 role_search:
                                                                     filters.role_search ||
                                                                     undefined,
+                                                                region_id:
+                                                                    filters.region_id ||
+                                                                    undefined,
                                                                 roles_page:
                                                                     roles.current_page -
                                                                     1,
@@ -1105,6 +1167,9 @@ export default function UserManagement({
                                                                 tab: 'roles',
                                                                 role_search:
                                                                     filters.role_search ||
+                                                                    undefined,
+                                                                region_id:
+                                                                    filters.region_id ||
                                                                     undefined,
                                                                 roles_page:
                                                                     roles.current_page +

@@ -13,6 +13,7 @@ class RegionSeeder extends Seeder
     public function run(): void
     {
         $regions = [
+            Region::CentralOffice,
             'Regional Office I',
             'Regional Office II',
             'Regional Office III',

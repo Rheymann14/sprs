@@ -23,6 +23,8 @@ use Illuminate\Support\Carbon;
 #[Fillable(['name'])]
 class Region extends Model
 {
+    public const string CentralOffice = 'CHED Central Office';
+
     /** @use HasFactory<RegionFactory> */
     use HasFactory, HasUlids;
 

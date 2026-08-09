@@ -6,6 +6,7 @@ export type Region = {
 export type UserRole = {
     id: string;
     name: string;
+    organization_group: 'central-office' | 'regional-office' | 'agency';
 };
 
 export type User = {
@@ -25,8 +26,11 @@ export type User = {
 export type Auth = {
     user: User;
     permissions: {
+        view_statistics: boolean;
         manage_forms: boolean;
         manage_users: boolean;
+        manage_user_roles: boolean;
+        manage_regions: boolean;
     };
 };
 

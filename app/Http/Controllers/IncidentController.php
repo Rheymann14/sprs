@@ -13,6 +13,7 @@ use App\Models\IncidentForm;
 use App\Models\IncidentStatus;
 use App\Models\IncidentSubcategory;
 use App\Models\IncidentType;
+use App\Models\Region;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -27,7 +28,12 @@ class IncidentController extends Controller
 {
     public function index(Request $request): Response
     {
+        $user = $request->user();
         $search = $request->string('search')->trim()->toString();
+        $requestedRegionId = $request->string('region_id')->trim()->toString();
+        $regionId = $user->isSuperAdmin()
+            ? Region::query()->whereKey($requestedRegionId)->value('id')
+            : $user->region_id;
         $year = $request->integer('year');
         $year = $year >= 1000 && $year <= 9999 ? $year : null;
         $incidentTypeId = $request->string('incident_type_id')->trim()->toString();
@@ -44,9 +50,10 @@ class IncidentController extends Controller
 
         return Inertia::render('incidents/index', [
             'incidents' => Incident::query()
-                ->select('id', 'incident_number', 'incident_subcategory_id', 'status', 'created_at')
-                ->where('region_id', $request->user()?->region_id)
+                ->select('id', 'incident_number', 'incident_subcategory_id', 'region_id', 'status', 'created_at')
+                ->when($regionId !== null, fn (Builder $query) => $query->where('region_id', $regionId))
                 ->with([
+                    'region:id,name',
                     'subcategory:id,incident_type_id,name',
                     'subcategory.incidentType:id,name',
                     'subcategory.statuses:id,incident_subcategory_id,name,icon,sort_order',
@@ -95,6 +102,7 @@ class IncidentController extends Controller
                         'incident_number' => $incident->incident_number,
                         'incident_type' => $incident->subcategory->incidentType->name,
                         'subcategory' => $incident->subcategory->name,
+                        'region' => $incident->region->name,
                         'status' => $incident->status,
                         'status_label' => $statusDefinition['name'] ?? Str::headline($incident->status),
                         'status_icon' => $statusDefinition['icon'] ?? match (Str::lower($incident->status)) {
@@ -112,7 +120,11 @@ class IncidentController extends Controller
                 'subcategory_id' => $subcategoryId,
                 'subcategory' => $selectedSubcategory?->name,
                 'status' => $status,
+                'region_id' => $regionId ?? '',
             ],
+            'regions' => $user->isSuperAdmin()
+                ? Region::query()->select('id', 'name')->orderBy('name')->get()
+                : [],
         ]);
     }
 
@@ -125,7 +137,7 @@ class IncidentController extends Controller
 
     public function show(Request $request, Incident $incident): Response
     {
-        abort_unless($incident->region_id === $request->user()?->region_id, 403);
+        abort_unless($request->user()->canAccessRegion($incident->region_id), 403);
 
         $messageLimit = min(max($request->integer('messages', 30), 30), 150);
 
@@ -190,9 +202,9 @@ class IncidentController extends Controller
 
     public function edit(Request $request, Incident $incident): Response
     {
-        abort_unless($incident->region_id === $request->user()?->region_id, 403);
+        abort_unless($request->user()->canAccessRegion($incident->region_id), 403);
 
-        $incidentTypes = $this->incidentTypesForRegion($request->user()->region_id);
+        $incidentTypes = $this->incidentTypesForRegion($incident->region_id);
         $incident->load('subcategory:id,incident_type_id,name');
         $selectedType = $incidentTypes->firstWhere('id', $incident->subcategory->incident_type_id);
         $selectedSubcategory = $selectedType?->subcategories->firstWhere('id', $incident->incident_subcategory_id);
@@ -283,7 +295,7 @@ class IncidentController extends Controller
 
     public function destroy(Request $request, Incident $incident): RedirectResponse
     {
-        abort_unless($incident->region_id === $request->user()?->region_id, 403);
+        abort_unless($request->user()->canAccessRegion($incident->region_id), 403);
 
         $filePaths = $this->reportFilePaths($incident->report_data);
         $messageFilePaths = $incident->messages()

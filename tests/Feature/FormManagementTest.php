@@ -27,7 +27,7 @@ function administrator(?Region $region = null): User
 function superAdministrator(?Region $region = null): User
 {
     $role = UserRole::query()->firstOrCreate(['name' => UserRole::SuperAdmin]);
-    $region ??= Region::factory()->create();
+    $region ??= Region::query()->firstOrCreate(['name' => Region::CentralOffice]);
 
     return User::factory()->for($role, 'userRole')->for($region)->create();
 }
@@ -270,6 +270,7 @@ test('administrators can save a dynamic form into normalized tables', function (
 
     $response = $this->actingAs($administrator)
         ->put(route('incident-subcategories.form.update', $subcategory), [
+            'region_id' => $administrator->region_id,
             'title' => 'Flood assessment',
             'description' => 'Initial field assessment.',
             'sections' => [
@@ -336,6 +337,7 @@ test('administrators only see and edit forms in their own region', function () {
 
     $this->actingAs($firstAdministrator)
         ->put(route('incident-subcategories.form.update', $subcategory), [
+            'region_id' => $firstRegion->id,
             'title' => 'Updated Region I form',
             'description' => null,
             'sections' => [
@@ -351,6 +353,19 @@ test('administrators only see and edit forms in their own region', function () {
 
     expect($firstForm->refresh()->title)->toBe('Updated Region I form')
         ->and($secondForm->refresh()->title)->toBe('Region II form');
+
+    $this->actingAs($firstAdministrator)
+        ->put(route('incident-subcategories.form.update', $subcategory), [
+            'region_id' => $secondRegion->id,
+            'title' => 'Unauthorized update',
+            'sections' => [[
+                'client_key' => Str::uuid()->toString(),
+                'title' => 'Details',
+                'description' => null,
+                'fields' => [],
+            ]],
+        ])
+        ->assertSessionHasErrors('region_id');
 
     $this->actingAs($firstAdministrator)
         ->get(route('form-management.index'))
@@ -369,11 +384,49 @@ test('administrators only see and edit forms in their own region', function () {
         );
 });
 
+test('super admins can filter and edit forms across regions', function () {
+    $centralRegion = Region::query()->firstOrCreate(['name' => Region::CentralOffice]);
+    $regionalOffice = Region::factory()->create();
+    $superAdmin = superAdministrator($centralRegion);
+    $subcategory = IncidentSubcategory::factory()->create();
+    $regionalForm = IncidentForm::factory()
+        ->for($subcategory, 'subcategory')
+        ->for($regionalOffice)
+        ->create(['title' => 'Regional form']);
+
+    $this->actingAs($superAdmin)
+        ->get(route('form-management.index', ['region_id' => $regionalOffice->id]))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('filters.region_id', $regionalOffice->id)
+            ->where('savedForms.total', 1)
+            ->where('savedForms.data.0.id', $regionalForm->id)
+            ->has('regions', 2)
+        );
+
+    $this->actingAs($superAdmin)
+        ->put(route('incident-subcategories.form.update', $subcategory), [
+            'region_id' => $regionalOffice->id,
+            'title' => 'Updated regional form',
+            'description' => null,
+            'sections' => [[
+                'client_key' => Str::uuid()->toString(),
+                'title' => 'Details',
+                'description' => null,
+                'fields' => [],
+            ]],
+        ])
+        ->assertRedirect(route('form-management.index', ['region_id' => $regionalOffice->id]));
+
+    expect($regionalForm->refresh()->title)->toBe('Updated regional form');
+});
+
 test('dropdown and radio fields require at least two options', function (string $type) {
     $subcategory = IncidentSubcategory::factory()->create();
+    $administrator = administrator();
 
-    $this->actingAs(administrator())
+    $this->actingAs($administrator)
         ->put(route('incident-subcategories.form.update', $subcategory), [
+            'region_id' => $administrator->region_id,
             'title' => 'Invalid form',
             'description' => null,
             'sections' => [
@@ -405,9 +458,11 @@ test('dropdown and radio fields require at least two options', function (string 
 
 test('form validation messages use plain language', function () {
     $subcategory = IncidentSubcategory::factory()->create();
+    $administrator = administrator();
 
-    $this->actingAs(administrator())
+    $this->actingAs($administrator)
         ->put(route('incident-subcategories.form.update', $subcategory), [
+            'region_id' => $administrator->region_id,
             'title' => '',
             'description' => null,
             'sections' => [

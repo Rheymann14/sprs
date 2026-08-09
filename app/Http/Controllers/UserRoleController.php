@@ -32,7 +32,12 @@ class UserRoleController extends Controller
 
     public function destroy(Request $request, UserRole $userRole): RedirectResponse
     {
-        abort_unless($request->user()?->can('manage-user-directories'), 403);
+        abort_unless($request->user()?->can('manage-user-roles'), 403);
+        abort_unless(
+            $request->user()->isSuperAdmin()
+                || $userRole->organization_group === $request->user()->roleGroup(),
+            403,
+        );
 
         if ($userRole->is_system) {
             throw ValidationException::withMessages([

@@ -74,6 +74,39 @@ class UserRole extends Model
     }
 
     /**
+     * Get the role names the given manager may assign.
+     *
+     * @return list<string>
+     */
+    public static function assignableNamesFor(User $manager): array
+    {
+        $managerGroup = $manager->roleGroup();
+        $systemRoleNames = $manager->isSuperAdmin()
+            ? self::assignableNames()
+            : array_values(array_filter(
+                array_keys(self::assignmentGroups()[$managerGroup?->label() ?? ''] ?? []),
+                fn (string $roleName): bool => $roleName !== self::SuperAdmin,
+            ));
+        $customRoleNames = self::query()
+            ->where('is_system', false)
+            ->when(! $manager->isSuperAdmin(), fn ($query) => $query->where('organization_group', $managerGroup?->value))
+            ->pluck('name')
+            ->filter(fn (mixed $roleName): bool => is_string($roleName))
+            ->all();
+
+        return array_values(array_unique([...$systemRoleNames, ...$customRoleNames]));
+    }
+
+    public static function groupForName(string $name): UserRoleGroup
+    {
+        $storedGroup = self::query()->where('name', $name)->value('organization_group');
+
+        return $storedGroup !== null
+            ? UserRoleGroup::from($storedGroup)
+            : UserRoleGroup::from(self::metadataForName($name)['organization_group']);
+    }
+
+    /**
      * Get the role names that cannot be deleted.
      *
      * @return list<string>
@@ -123,6 +156,22 @@ class UserRole extends Model
             self::Administrator,
             self::SuperAdmin,
             self::CentralOfficeAdministrator,
+            self::RegionalOfficeAdministrator,
+        ];
+    }
+
+    /**
+     * Get the roles allowed to manage regional form definitions and statistics.
+     *
+     * @return list<string>
+     */
+    public static function administratorNames(): array
+    {
+        return [
+            self::Administrator,
+            self::SuperAdmin,
+            self::CentralOfficeAdministrator,
+            self::RegionalOfficeAdministrator,
         ];
     }
 
@@ -155,7 +204,7 @@ class UserRole extends Model
             $metadata = self::metadataForName($role->name);
 
             $role->display_name = $role->display_name ?: $metadata['display_name'];
-            $role->organization_group = $role->organization_group ?: $metadata['organization_group'];
+            $role->organization_group = $role->getAttribute('organization_group') ?: $metadata['organization_group'];
             $role->is_system = $metadata['is_system'] || $role->is_system;
         });
     }

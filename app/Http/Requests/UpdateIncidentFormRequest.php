@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\FormFieldType;
+use App\Models\Region;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -26,7 +27,14 @@ class UpdateIncidentFormRequest extends FormRequest
      */
     public function rules(): array
     {
+        $regionRules = ['required', 'string', Rule::exists(Region::class, 'id')];
+
+        if (! $this->user()->isSuperAdmin()) {
+            $regionRules[] = Rule::in([$this->user()->region_id]);
+        }
+
         return [
+            'region_id' => $regionRules,
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:5000'],
             'sections' => ['required', 'array', 'min:1'],

@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Route;
 Route::inertia('/', 'welcome')->name('home');
 
 Route::get('statistics', StatisticsController::class)
-    ->middleware(['auth', 'verified'])
+    ->middleware(['auth', 'verified', 'can:view-statistics'])
     ->name('statistics');
 
 Route::get('incidents', [IncidentController::class, 'index'])
@@ -84,13 +84,16 @@ Route::middleware(['auth', 'verified', 'can:manage-users'])->group(function () {
     Route::delete('user-management/{user}', [UserManagementController::class, 'destroy'])
         ->name('user-management.destroy');
 
-    Route::middleware('can:manage-user-directories')->group(function () {
+    Route::middleware('can:manage-user-roles')->group(function () {
         Route::post('user-management/roles', [UserRoleController::class, 'store'])
             ->name('user-management.roles.store');
         Route::put('user-management/roles/{user_role}', [UserRoleController::class, 'update'])
             ->name('user-management.roles.update');
         Route::delete('user-management/roles/{user_role}', [UserRoleController::class, 'destroy'])
             ->name('user-management.roles.destroy');
+    });
+
+    Route::middleware('can:manage-regions')->group(function () {
         Route::post('user-management/regions', [RegionController::class, 'store'])
             ->name('user-management.regions.store');
         Route::delete('user-management/regions/{region}', [RegionController::class, 'destroy'])

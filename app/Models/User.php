@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Enums\UserRoleGroup;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -63,6 +64,32 @@ class User extends Authenticatable
     public function incidentMessages(): HasMany
     {
         return $this->hasMany(IncidentMessage::class);
+    }
+
+    public function hasRole(string ...$roleNames): bool
+    {
+        $this->loadMissing('userRole');
+
+        return $this->userRole !== null
+            && in_array($this->userRole->name, $roleNames, true);
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->hasRole(UserRole::SuperAdmin);
+    }
+
+    public function canAccessRegion(?string $regionId): bool
+    {
+        return $regionId !== null
+            && ($this->isSuperAdmin() || $this->region_id === $regionId);
+    }
+
+    public function roleGroup(): ?UserRoleGroup
+    {
+        $this->loadMissing('userRole');
+
+        return $this->userRole?->organization_group;
     }
 
     /**

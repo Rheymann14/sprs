@@ -10,7 +10,14 @@ use Inertia\Testing\AssertableInertia as Assert;
 function userManager(string $roleName = UserRole::SuperAdmin, ?Region $region = null): User
 {
     $role = UserRole::query()->create(['name' => $roleName]);
-    $region ??= Region::factory()->create();
+    $region ??= in_array($roleName, [
+        UserRole::Administrator,
+        UserRole::SuperAdmin,
+        UserRole::CentralOfficeAdministrator,
+        UserRole::CentralOfficeStaff,
+    ], true)
+        ? Region::query()->firstOrCreate(['name' => Region::CentralOffice])
+        : Region::factory()->create();
 
     return User::factory()->for($role, 'userRole')->for($region)->create();
 }
@@ -42,38 +49,47 @@ test('user managers can view users, role groups and regions', function () {
             ->where('roleGroupOptions.0.value', UserRoleGroup::CentralOffice->value)
             ->where('roleGroupOptions.1.value', UserRoleGroup::RegionalOffice->value)
             ->where('roleGroupOptions.2.value', UserRoleGroup::Agency->value)
-            ->where('canManageDirectories', true)
+            ->where('canManageRoles', true)
+            ->where('canManageRegions', true)
             ->has('roles.data', 1)
             ->where('roles.data.0.name', 'Super Admin')
             ->where('roles.data.0.group', 'CHED Central Office')
             ->where('roles.data.0.users_count', 1)
             ->where('roles.data.0.can_delete', false)
-            ->where('regions.0.id', $region->id)
-            ->where('regions.0.name', 'Region IV-A')
-            ->where('regions.0.users_count', 1)
-            ->has('managedRegions.data', 1)
-            ->where('managedRegions.data.0.name', 'Region IV-A')
+            ->where('regions.1.id', $region->id)
+            ->where('regions.1.name', 'Region IV-A')
+            ->where('regions.1.users_count', 1)
+            ->has('managedRegions.data', 2)
+            ->where('managedRegions.data.1.name', 'Region IV-A')
         );
 });
 
-test('role and region management are only available to super admins', function () {
+test('office administrators can manage roles but only super admins can manage regions', function () {
     $manager = userManager(UserRole::CentralOfficeAdministrator);
 
     $this->actingAs($manager)
         ->get(route('user-management.index', ['tab' => 'roles']))
         ->assertInertia(fn (Assert $page) => $page
-            ->where('canManageDirectories', false)
-            ->where('filters.tab', 'users')
-            ->where('roles', null)
+            ->where('canManageRoles', true)
+            ->where('canManageRegions', false)
+            ->where('filters.tab', 'roles')
+            ->where('roles.total', 1)
             ->where('managedRegions', null)
         );
 
     $this->actingAs($manager)
         ->post(route('user-management.roles.store'), [
             'display_name' => 'Data Officer',
-            'organization_group' => UserRoleGroup::Agency->value,
+            'organization_group' => UserRoleGroup::CentralOffice->value,
         ])
-        ->assertForbidden();
+        ->assertRedirect(route('user-management.index', ['tab' => 'roles']));
+
+    $this->actingAs($manager)
+        ->post(route('user-management.roles.store'), [
+            'display_name' => 'Regional Data Officer',
+            'organization_group' => UserRoleGroup::RegionalOffice->value,
+        ])
+        ->assertSessionHasErrors('organization_group');
 
     $this->actingAs($manager)
         ->post(route('user-management.regions.store'), ['name' => 'Region Test'])
@@ -202,7 +218,9 @@ test('built-in roles cannot be edited', function () {
 });
 
 test('super admins can create and safely delete regions', function () {
-    $manager = userManager();
+    $managerRegion = Region::factory()->create();
+    $manager = userManager(region: $managerRegion);
+    $centralRegion = Region::query()->firstOrCreate(['name' => Region::CentralOffice]);
 
     $this->actingAs($manager)
         ->post(route('user-management.regions.store'), ['name' => '  Region   Test  '])
@@ -223,6 +241,12 @@ test('super admins can create and safely delete regions', function () {
         ->assertSessionHasErrors('region');
 
     $this->assertModelExists($manager->region);
+
+    $this->actingAs($manager)
+        ->delete(route('user-management.regions.destroy', $centralRegion))
+        ->assertSessionHasErrors('region');
+
+    $this->assertModelExists($centralRegion);
 });
 
 test('users can be searched and paginated', function () {
@@ -275,7 +299,7 @@ test('users can be searched and paginated', function () {
 test('user managers can create a regionally assigned user', function () {
     $region = Region::factory()->create();
 
-    $this->actingAs(userManager(UserRole::CentralOfficeAdministrator, $region))
+    $this->actingAs(userManager(UserRole::RegionalOfficeAdministrator, $region))
         ->post(route('user-management.store'), [
             'name' => '  Juan   Dela Cruz  ',
             'email' => 'JUAN@EXAMPLE.COM',
@@ -368,7 +392,7 @@ test('user managers can delete another user but not themselves', function () {
 test('user managers can only view and mutate users in their own region', function () {
     $managerRegion = Region::factory()->create();
     $otherRegion = Region::factory()->create();
-    $manager = userManager(region: $managerRegion);
+    $manager = userManager(UserRole::RegionalOfficeAdministrator, $managerRegion);
     $regionalUser = User::factory()->for($managerRegion)->create();
     $otherUser = User::factory()->for($otherRegion)->create();
 
@@ -396,4 +420,56 @@ test('user managers can only view and mutate users in their own region', functio
             'region_id' => $otherRegion->id,
         ])
         ->assertSessionHasErrors('region_id');
+});
+
+test('super admins can view and filter users across regions', function () {
+    $centralRegion = Region::query()->firstOrCreate(['name' => Region::CentralOffice]);
+    $regionalOffice = Region::factory()->create(['name' => 'Regional Office I']);
+    $manager = userManager(region: $centralRegion);
+    $regionalUser = User::factory()->for($regionalOffice)->create();
+
+    $this->actingAs($manager)
+        ->get(route('user-management.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('users.total', 2)
+            ->has('regions', 2)
+            ->where('filters.region_id', '')
+        );
+
+    $this->actingAs($manager)
+        ->get(route('user-management.index', ['region_id' => $regionalOffice->id]))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('users.total', 1)
+            ->where('users.data.0.id', $regionalUser->id)
+            ->where('filters.region_id', $regionalOffice->id)
+        );
+});
+
+test('central office roles must be assigned to the central office region', function () {
+    $centralRegion = Region::query()->firstOrCreate(['name' => Region::CentralOffice]);
+    $regionalOffice = Region::factory()->create();
+    $manager = userManager(region: $centralRegion);
+
+    $this->actingAs($manager)
+        ->post(route('user-management.store'), [
+            'name' => 'Central Administrator',
+            'email' => 'central-admin@example.com',
+            'password' => 'chedsprs2026',
+            'user_role' => UserRole::CentralOfficeAdministrator,
+            'region_id' => $regionalOffice->id,
+        ])
+        ->assertSessionHasErrors('region_id');
+
+    $this->actingAs($manager)
+        ->post(route('user-management.store'), [
+            'name' => 'Central Administrator',
+            'email' => 'central-admin@example.com',
+            'password' => 'chedsprs2026',
+            'user_role' => UserRole::CentralOfficeAdministrator,
+            'region_id' => $centralRegion->id,
+        ])
+        ->assertRedirect(route('user-management.index'));
+
+    expect(User::query()->where('email', 'central-admin@example.com')->value('region_id'))
+        ->toBe($centralRegion->id);
 });

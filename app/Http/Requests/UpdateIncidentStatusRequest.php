@@ -17,7 +17,7 @@ class UpdateIncidentStatusRequest extends FormRequest
         $incident = $this->route('incident');
 
         return $incident instanceof Incident
-            && $incident->region_id === $this->user()?->region_id;
+            && ($this->user()?->canAccessRegion($incident->region_id) ?? false);
     }
 
     /**

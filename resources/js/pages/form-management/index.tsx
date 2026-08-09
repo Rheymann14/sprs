@@ -139,6 +139,7 @@ type EditorSection = {
 };
 
 type EditorForm = {
+    region_id: string;
     title: string;
     description: string;
     sections: EditorSection[];
@@ -174,7 +175,9 @@ type PageProps = {
     savedForms: PaginatedSavedForms;
     filters: {
         search: string;
+        region_id: string;
     };
+    regions: Array<{ id: string; name: string }>;
     selection: {
         incident_type_id: string | null;
         subcategory_id: string | null;
@@ -425,9 +428,13 @@ function scrollToEditorItem(elementId: string): void {
     });
 }
 
-function editorData(subcategory: IncidentSubcategory): EditorForm {
+function editorData(
+    subcategory: IncidentSubcategory,
+    regionId: string,
+): EditorForm {
     if (!subcategory.form) {
         return {
+            region_id: regionId,
             title: `${subcategory.name} incident form`,
             description: '',
             sections: [createEmptySection()],
@@ -435,6 +442,7 @@ function editorData(subcategory: IncidentSubcategory): EditorForm {
     }
 
     return {
+        region_id: regionId,
         title: subcategory.form.title,
         description: subcategory.form.description ?? '',
         sections: subcategory.form.sections.map((section) => ({
@@ -459,6 +467,7 @@ export default function FormManagement({
     fieldTypes,
     savedForms,
     filters,
+    regions,
     selection,
 }: PageProps) {
     const initialSubcategory = incidentTypes
@@ -506,8 +515,9 @@ export default function FormManagement({
     });
     const form = useForm<EditorForm>({
         ...(initialSubcategory
-            ? editorData(initialSubcategory)
+            ? editorData(initialSubcategory, filters.region_id)
             : {
+                  region_id: filters.region_id,
                   title: '',
                   description: '',
                   sections: [createEmptySection()],
@@ -659,6 +669,7 @@ export default function FormManagement({
                 query: {
                     incident_type: incidentTypeId || undefined,
                     search: savedFormSearch.trim() || undefined,
+                    region_id: filters.region_id || undefined,
                 },
             }),
             {},
@@ -680,7 +691,7 @@ export default function FormManagement({
             return;
         }
 
-        const data = editorData(subcategory);
+        const data = editorData(subcategory, filters.region_id);
 
         setSelectedSubcategoryId(subcategoryId);
         setActionSectionKey(data.sections[0]?.client_key ?? '');
@@ -1012,6 +1023,7 @@ export default function FormManagement({
                 query: {
                     incident_type: selectedIncidentTypeId || undefined,
                     search: savedFormSearch.trim() || undefined,
+                    region_id: filters.region_id || undefined,
                 },
             }),
             {},
@@ -1030,6 +1042,7 @@ export default function FormManagement({
             formManagement.url({
                 query: {
                     incident_type: selectedIncidentTypeId || undefined,
+                    region_id: filters.region_id || undefined,
                 },
             }),
             {},
@@ -1049,14 +1062,37 @@ export default function FormManagement({
             <Head title="Form Management" />
 
             <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-                <div className="space-y-1">
-                    <h1 className="text-2xl font-semibold tracking-tight">
-                        Form Management
-                    </h1>
-                    <p className="text-sm text-muted-foreground">
-                        Configure incident categories and build the fields
-                        responders will complete.
-                    </p>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-1">
+                        <h1 className="text-2xl font-semibold tracking-tight">
+                            Form Management
+                        </h1>
+                        <p className="text-sm text-muted-foreground">
+                            Configure incident categories and build the fields
+                            responders will complete.
+                        </p>
+                    </div>
+                    {regions.length > 0 && (
+                        <div className="w-full sm:w-64">
+                            <SearchableCommand
+                                value={filters.region_id}
+                                options={regions.map((region) => ({
+                                    value: region.id,
+                                    label: region.name,
+                                }))}
+                                placeholder="Filter by region"
+                                searchPlaceholder="Search regions..."
+                                emptyMessage="No regions found."
+                                onValueChange={(regionId) =>
+                                    router.get(
+                                        formManagement.url({
+                                            query: { region_id: regionId },
+                                        }),
+                                    )
+                                }
+                            />
+                        </div>
+                    )}
                 </div>
 
                 <Card className={workflowCardClassName}>
@@ -1305,6 +1341,9 @@ export default function FormManagement({
                                                                     savedForm.incident_type_id,
                                                                 subcategory:
                                                                     savedForm.subcategory_id,
+                                                                region_id:
+                                                                    filters.region_id ||
+                                                                    undefined,
                                                             },
                                                         })}
                                                         className="group grid gap-4 px-4 py-4 transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_14rem_2.5rem] md:items-center"
@@ -1375,6 +1414,9 @@ export default function FormManagement({
                                                                 incident_type:
                                                                     selectedIncidentTypeId ||
                                                                     undefined,
+                                                                region_id:
+                                                                    filters.region_id ||
+                                                                    undefined,
                                                                 page:
                                                                     savedForms.current_page -
                                                                     1,
@@ -1418,6 +1460,9 @@ export default function FormManagement({
                                                                     undefined,
                                                                 incident_type:
                                                                     selectedIncidentTypeId ||
+                                                                    undefined,
+                                                                region_id:
+                                                                    filters.region_id ||
                                                                     undefined,
                                                                 page:
                                                                     savedForms.current_page +

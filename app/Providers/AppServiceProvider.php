@@ -28,21 +28,17 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
 
-        Gate::before(fn (User $user): ?bool => $user->userRole()
-            ->where('name', UserRole::SuperAdmin)
-            ->exists() ? true : null);
+        Gate::before(fn (User $user): ?bool => $user->isSuperAdmin() ? true : null);
 
-        Gate::define('manage-forms', fn (User $user): bool => $user->userRole()
-            ->where('name', UserRole::Administrator)
-            ->exists());
+        Gate::define('view-statistics', fn (User $user): bool => $user->hasRole(...UserRole::administratorNames()));
 
-        Gate::define('manage-users', fn (User $user): bool => $user->userRole()
-            ->whereIn('name', UserRole::userManagerNames())
-            ->exists());
+        Gate::define('manage-forms', fn (User $user): bool => $user->hasRole(...UserRole::administratorNames()));
 
-        Gate::define('manage-user-directories', fn (User $user): bool => $user->userRole()
-            ->where('name', UserRole::SuperAdmin)
-            ->exists());
+        Gate::define('manage-users', fn (User $user): bool => $user->hasRole(...UserRole::userManagerNames()));
+
+        Gate::define('manage-user-roles', fn (User $user): bool => $user->hasRole(...UserRole::userManagerNames()));
+
+        Gate::define('manage-regions', fn (User $user): bool => $user->isSuperAdmin());
     }
 
     /**

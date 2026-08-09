@@ -16,9 +16,11 @@ class UpdateUserRoleRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return ($this->user()?->can('manage-user-directories') ?? false)
+        return ($this->user()?->can('manage-user-roles') ?? false)
             && $this->route('user_role') instanceof UserRole
-            && ! $this->route('user_role')->is_system;
+            && ! $this->route('user_role')->is_system
+            && ($this->user()->isSuperAdmin()
+                || $this->route('user_role')->organization_group === $this->user()->roleGroup());
     }
 
     /**
@@ -35,7 +37,14 @@ class UpdateUserRoleRequest extends FormRequest
                 'max:255',
                 Rule::unique(UserRole::class, 'display_name')->ignore($this->route('user_role')),
             ],
-            'organization_group' => ['required', Rule::enum(UserRoleGroup::class)],
+            'organization_group' => [
+                'required',
+                Rule::enum(UserRoleGroup::class),
+                Rule::when(
+                    ! $this->user()->isSuperAdmin(),
+                    Rule::in([$this->user()->roleGroup()?->value]),
+                ),
+            ],
         ];
     }
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\UserRoleGroup;
 use App\Models\Region;
 use App\Models\User;
 use App\Models\UserRole;
@@ -10,6 +11,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\Validator;
 
 class UpdateUserRequest extends FormRequest
 {
@@ -18,8 +20,11 @@ class UpdateUserRequest extends FormRequest
      */
     public function authorize(): bool
     {
+        $managedUser = $this->route('user');
+
         return $this->user()?->region_id !== null
-            && $this->user()->region_id === $this->route('user')?->region_id
+            && $managedUser instanceof User
+            && $this->user()->canAccessRegion($managedUser->region_id)
             && $this->user()->can('manage-users');
     }
 
@@ -30,6 +35,16 @@ class UpdateUserRequest extends FormRequest
      */
     public function rules(): array
     {
+        $regionRules = [
+            'required',
+            'string',
+            Rule::exists(Region::class, 'id'),
+        ];
+
+        if (! $this->user()->isSuperAdmin()) {
+            $regionRules[] = Rule::in([$this->user()->region_id]);
+        }
+
         return [
             'name' => ['required', 'string', 'max:255'],
             'email' => [
@@ -44,17 +59,29 @@ class UpdateUserRequest extends FormRequest
             'user_role' => [
                 'required',
                 'string',
-                Rule::in(collect(UserRole::assignableNames())
-                    ->merge(UserRole::query()->where('name', '!=', UserRole::Administrator)->pluck('name'))
-                    ->unique()
-                    ->all()),
+                Rule::in(UserRole::assignableNamesFor($this->user())),
             ],
-            'region_id' => [
-                'required',
-                'string',
-                Rule::exists(Region::class, 'id'),
-                Rule::in([$this->user()?->region_id]),
-            ],
+            'region_id' => $regionRules,
+        ];
+    }
+
+    /** @return array<int, callable> */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                $roleName = $this->string('user_role')->toString();
+                $regionId = $this->string('region_id')->toString();
+
+                if ($roleName === '' || $regionId === '') {
+                    return;
+                }
+
+                if (UserRole::groupForName($roleName) === UserRoleGroup::CentralOffice
+                    && ! Region::query()->whereKey($regionId)->where('name', Region::CentralOffice)->exists()) {
+                    $validator->errors()->add('region_id', __('Central Office roles must be assigned to CHED Central Office.'));
+                }
+            },
         ];
     }
 

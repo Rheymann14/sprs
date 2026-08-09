@@ -10,6 +10,7 @@ test('regions are seeded without duplicates', function () {
     $this->seed(RegionSeeder::class);
 
     expect(Region::query()->orderBy('id')->pluck('name')->all())->toBe([
+        'CHED Central Office',
         'Regional Office I',
         'Regional Office II',
         'Regional Office III',

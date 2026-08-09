@@ -15,7 +15,7 @@ class StoreRegionRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user()?->can('manage-user-directories') ?? false;
+        return $this->user()?->can('manage-regions') ?? false;
     }
 
     /**

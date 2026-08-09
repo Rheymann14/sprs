@@ -7,6 +7,7 @@ use App\Models\IncidentForm;
 use App\Models\IncidentStatus;
 use App\Models\IncidentSubcategory;
 use App\Models\IncidentType;
+use App\Models\Region;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Http\Request;
@@ -19,7 +20,11 @@ class FormManagementController extends Controller
     public function index(Request $request): Response
     {
         $search = $request->string('search')->trim()->toString();
-        $regionId = $request->user()?->region_id;
+        $user = $request->user();
+        $requestedRegionId = $request->string('region_id')->trim()->toString();
+        $regionId = $user->isSuperAdmin()
+            ? Region::query()->whereKey($requestedRegionId)->value('id') ?? $user->region_id
+            : $user->region_id;
         $incidentTypes = IncidentType::query()
             ->select('id', 'name')
             ->with([
@@ -93,7 +98,11 @@ class FormManagementController extends Controller
                 ]),
             'filters' => [
                 'search' => $search,
+                'region_id' => $regionId ?? '',
             ],
+            'regions' => $user->isSuperAdmin()
+                ? Region::query()->select('id', 'name')->orderBy('name')->get()
+                : [],
             'selection' => [
                 'incident_type_id' => $hasValidIncidentType ? $selectedIncidentTypeId : null,
                 'subcategory_id' => $hasValidSelection ? $selectedSubcategoryId : null,

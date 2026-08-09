@@ -17,7 +17,8 @@ class UpdateIncidentRequest extends StoreIncidentRequest
         $incident = $this->route('incident');
 
         return $incident instanceof Incident
-            && ($this->user()?->canAccessRegion($incident->region_id) ?? false);
+            && $this->user() !== null
+            && $incident->isManageableBy($this->user());
     }
 
     public function rules(): array

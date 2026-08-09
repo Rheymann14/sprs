@@ -88,6 +88,7 @@ type Incident = {
         icon: StatusIcon;
     }>;
     conversation_open: boolean;
+    can_respond: boolean;
     can_manage_status: boolean;
 };
 
@@ -308,7 +309,7 @@ export default function IncidentShow({
     const sendMessage = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
 
-        if (!incident.conversation_open) {
+        if (!incident.conversation_open || !incident.can_respond) {
             return;
         }
 
@@ -442,8 +443,9 @@ export default function IncidentShow({
                             <Waypoints className="size-5" /> Incident routing
                         </CardTitle>
                         <CardDescription>
-                            Routed offices and agencies can view this incident
-                            and participate in its conversation.
+                            Routing shares this incident with another CHED
+                            office. Authorized administrators and staff there
+                            can participate in its conversation.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -463,11 +465,12 @@ export default function IncidentShow({
                             <form className="space-y-3" onSubmit={saveRouting}>
                                 <div>
                                     <p className="text-sm font-medium">
-                                        Route conversation access
+                                        Share with CHED offices
                                     </p>
                                     <p className="text-sm text-muted-foreground">
-                                        Selecting a region grants access to its
-                                        Regional Office and agency users.
+                                        Selected offices can view the report.
+                                        Their CHED administrators and staff can
+                                        reply while the conversation is open.
                                     </p>
                                 </div>
                                 <div className="grid gap-2 sm:grid-cols-2">
@@ -498,10 +501,17 @@ export default function IncidentShow({
                                         {routingForm.errors.region_ids}
                                     </p>
                                 )}
+                                <p className="text-xs text-muted-foreground">
+                                    Removing an office revokes its access to
+                                    this incident.
+                                </p>
                                 <div className="flex justify-end">
                                     <Button
                                         type="submit"
-                                        disabled={routingForm.processing}
+                                        disabled={
+                                            routingForm.processing ||
+                                            !routingForm.isDirty
+                                        }
                                     >
                                         <Waypoints />
                                         {routingForm.processing
@@ -531,6 +541,10 @@ export default function IncidentShow({
                                         No additional offices yet.
                                     </p>
                                 )}
+                                <p className="mt-3 text-xs text-muted-foreground">
+                                    Only a CHED administrator from the
+                                    originating office can change routing.
+                                </p>
                             </div>
                         )}
                     </CardContent>
@@ -540,8 +554,8 @@ export default function IncidentShow({
                     <CardHeader>
                         <CardTitle>Incident conversation</CardTitle>
                         <CardDescription>
-                            Messages between CHED Central Office and CHED
-                            Regional Office or Agency users.
+                            Messages between authorized CHED Central Office and
+                            Regional Office administrators and staff.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -628,103 +642,119 @@ export default function IncidentShow({
                                 ))
                             ) : (
                                 <div className="flex min-h-48 items-center justify-center text-center text-sm text-muted-foreground">
-                                    No messages yet. Start the conversation
-                                    below.
+                                    {incident.can_respond
+                                        ? 'No messages yet. Start the conversation below.'
+                                        : 'No messages yet.'}
                                 </div>
                             )}
                         </div>
 
-                        <form className="space-y-3" onSubmit={sendMessage}>
-                            {!incident.conversation_open && (
-                                <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700 dark:border-orange-800 dark:bg-orange-950/50 dark:text-orange-300">
-                                    This conversation is closed. Mark the
-                                    incident as a pending status to reply or
-                                    attach files.
+                        {incident.can_respond ? (
+                            <form className="space-y-3" onSubmit={sendMessage}>
+                                {!incident.conversation_open && (
+                                    <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700 dark:border-orange-800 dark:bg-orange-950/50 dark:text-orange-300">
+                                        This conversation is closed. Mark the
+                                        incident as a pending status to reply or
+                                        attach files.
+                                    </div>
+                                )}
+                                <Textarea
+                                    value={messageForm.data.message}
+                                    placeholder={
+                                        incident.conversation_open
+                                            ? 'Write a message…'
+                                            : 'Conversation closed'
+                                    }
+                                    aria-label="Incident message"
+                                    rows={3}
+                                    disabled={!incident.conversation_open}
+                                    onChange={(event) =>
+                                        messageForm.setData(
+                                            'message',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                                {messageForm.data.attachments.length > 0 && (
+                                    <div className="flex flex-wrap gap-2">
+                                        {messageForm.data.attachments.map(
+                                            (attachment, index) => (
+                                                <SelectedAttachmentChip
+                                                    key={`${attachment.name}-${index}`}
+                                                    attachment={attachment}
+                                                    onRemove={() =>
+                                                        removeAttachment(index)
+                                                    }
+                                                />
+                                            ),
+                                        )}
+                                    </div>
+                                )}
+                                {(messageForm.errors.message ||
+                                    attachmentError) && (
+                                    <p className="text-sm text-destructive">
+                                        {messageForm.errors.message ??
+                                            attachmentError}
+                                    </p>
+                                )}
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <p className="text-xs text-muted-foreground">
+                                        JPG, PNG, PDF, or Word · up to 5 files ·
+                                        5 MB each
+                                    </p>
+                                    <div className="flex gap-2">
+                                        <input
+                                            ref={fileInput}
+                                            type="file"
+                                            multiple
+                                            accept=".jpg,.jpeg,.png,.pdf,.doc,.docx"
+                                            className="hidden"
+                                            disabled={
+                                                !incident.conversation_open
+                                            }
+                                            onChange={chooseAttachments}
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            disabled={
+                                                !incident.conversation_open ||
+                                                messageForm.data.attachments
+                                                    .length >= 5
+                                            }
+                                            onClick={() =>
+                                                fileInput.current?.click()
+                                            }
+                                        >
+                                            <Paperclip /> Attach
+                                        </Button>
+                                        <Button
+                                            type="submit"
+                                            disabled={
+                                                !incident.conversation_open ||
+                                                messageForm.processing
+                                            }
+                                        >
+                                            <Send />
+                                            {messageForm.processing
+                                                ? 'Sending…'
+                                                : 'Send'}
+                                        </Button>
+                                    </div>
                                 </div>
-                            )}
-                            <Textarea
-                                value={messageForm.data.message}
-                                placeholder={
-                                    incident.conversation_open
-                                        ? 'Write a message…'
-                                        : 'Conversation closed'
-                                }
-                                aria-label="Incident message"
-                                rows={3}
-                                disabled={!incident.conversation_open}
-                                onChange={(event) =>
-                                    messageForm.setData(
-                                        'message',
-                                        event.target.value,
-                                    )
-                                }
-                            />
-                            {messageForm.data.attachments.length > 0 && (
-                                <div className="flex flex-wrap gap-2">
-                                    {messageForm.data.attachments.map(
-                                        (attachment, index) => (
-                                            <SelectedAttachmentChip
-                                                key={`${attachment.name}-${index}`}
-                                                attachment={attachment}
-                                                onRemove={() =>
-                                                    removeAttachment(index)
-                                                }
-                                            />
-                                        ),
-                                    )}
-                                </div>
-                            )}
-                            {(messageForm.errors.message ||
-                                attachmentError) && (
-                                <p className="text-sm text-destructive">
-                                    {messageForm.errors.message ??
-                                        attachmentError}
+                            </form>
+                        ) : (
+                            <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
+                                <p className="font-medium">
+                                    View-only conversation
                                 </p>
-                            )}
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                <p className="text-xs text-muted-foreground">
-                                    JPG, PNG, PDF, or Word · up to 5 files · 5
-                                    MB each
+                                <p className="mt-1 text-muted-foreground">
+                                    Only CHEDCO/CHEDRO Administrators and Staff
+                                    can reply. You can still read the
+                                    conversation.
                                 </p>
-                                <div className="flex gap-2">
-                                    <input
-                                        ref={fileInput}
-                                        type="file"
-                                        multiple
-                                        accept=".jpg,.jpeg,.png,.pdf,.doc,.docx"
-                                        className="hidden"
-                                        disabled={!incident.conversation_open}
-                                        onChange={chooseAttachments}
-                                    />
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        disabled={
-                                            !incident.conversation_open ||
-                                            messageForm.data.attachments
-                                                .length >= 5
-                                        }
-                                        onClick={() =>
-                                            fileInput.current?.click()
-                                        }
-                                    >
-                                        <Paperclip /> Attach
-                                    </Button>
-                                    <Button
-                                        type="submit"
-                                        disabled={
-                                            !incident.conversation_open ||
-                                            messageForm.processing
-                                        }
-                                    >
-                                        <Send />
-                                        {messageForm.processing
-                                            ? 'Sending…'
-                                            : 'Send'}
-                                    </Button>
-                                </div>
                             </div>
-                        </form>
+                        )}
                     </CardContent>
                 </Card>
 
@@ -752,7 +782,7 @@ export default function IncidentShow({
                             </Badge>
                             <p className="mt-3 text-sm text-muted-foreground">
                                 {incident.conversation_open
-                                    ? 'Conversation is open. Users can reply and attach files.'
+                                    ? 'Conversation is open. Authorized CHED administrators and staff can reply and attach files.'
                                     : 'Conversation is closed. Replies and attachments are disabled.'}
                             </p>
                         </div>

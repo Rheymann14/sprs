@@ -15,13 +15,15 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 /**
  * @property string $id
  * @property string $incident_type_id
+ * @property string $region_id
  * @property string $name
  * @property-read IncidentType $incidentType
+ * @property-read Region $region
  * @property-read IncidentForm|null $form
  * @property-read Collection<int, Incident> $incidents
  * @property-read Collection<int, IncidentStatus> $statuses
  */
-#[Fillable(['name'])]
+#[Fillable(['region_id', 'name'])]
 class IncidentSubcategory extends Model
 {
     /** @use HasFactory<IncidentSubcategoryFactory> */
@@ -33,6 +35,12 @@ class IncidentSubcategory extends Model
     public function incidentType(): BelongsTo
     {
         return $this->belongsTo(IncidentType::class);
+    }
+
+    /** @return BelongsTo<Region, $this> */
+    public function region(): BelongsTo
+    {
+        return $this->belongsTo(Region::class);
     }
 
     /**
@@ -63,5 +71,16 @@ class IncidentSubcategory extends Model
     public function statuses(): HasMany
     {
         return $this->hasMany(IncidentStatus::class)->orderBy('sort_order');
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (IncidentSubcategory $subcategory): void {
+            if ($subcategory->region_id === null) {
+                $subcategory->region_id = IncidentType::query()
+                    ->whereKey($subcategory->incident_type_id)
+                    ->value('region_id');
+            }
+        });
     }
 }

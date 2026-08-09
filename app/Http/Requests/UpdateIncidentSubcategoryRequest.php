@@ -15,7 +15,16 @@ class UpdateIncidentSubcategoryRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user()?->can('manage-forms') ?? false;
+        $incidentType = $this->route('incident_type');
+        $subcategory = $this->route('subcategory');
+
+        return $incidentType instanceof IncidentType
+            && $subcategory instanceof IncidentSubcategory
+            && $subcategory->incident_type_id === $incidentType->id
+            && $subcategory->region_id === $incidentType->region_id
+            && $this->user() !== null
+            && $this->user()->can('manage-forms')
+            && $this->user()->canAccessRegion($incidentType->region_id);
     }
 
     /**

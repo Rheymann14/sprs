@@ -11,3 +11,6 @@ Managed status actions use each subcategory's configured status names and icon m
 
 ## Incident routing grants regional conversation access
 Incidents retain one originating region and may be routed to destination regions. Users in the origin or any routed region may view and reply; this includes agency users assigned to that region. Report edit/delete permissions remain scoped to the originating region.
+
+## Incident actions follow CHED administrator and staff roles
+Super Admin remains the global override. CO/RO Administrators may file, reply, edit, delete, route, and change incident status when region access rules allow. CO/RO Staff may file and reply only. Agency, legacy Administrator, and custom roles may view region-accessible incidents but cannot file, reply, edit, delete, route, or change status. Closed statuses continue to block all replies.

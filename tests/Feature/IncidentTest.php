@@ -21,6 +21,16 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 
+function incidentUser(Region $region, string $roleName = UserRole::RegionalOfficeStaff): User
+{
+    $role = UserRole::query()->firstOrCreate(['name' => $roleName]);
+
+    return User::factory()
+        ->for($region)
+        ->for($role, 'userRole')
+        ->create();
+}
+
 test('guests are redirected from incidents', function () {
     $this->get(route('incidents.index'))->assertRedirect(route('login'));
 });
@@ -28,7 +38,7 @@ test('guests are redirected from incidents', function () {
 test('authenticated users can view incidents from their region', function () {
     $region = Region::factory()->create();
     $otherRegion = Region::factory()->create();
-    $user = User::factory()->for($region)->create();
+    $user = incidentUser($region);
     $type = IncidentType::factory()->create(['name' => 'HAZING']);
     $subcategory = IncidentSubcategory::factory()->for($type)->create([
         'name' => 'Physical hazing',
@@ -66,7 +76,7 @@ test('authenticated users can view incidents from their region', function () {
 
 test('incidents can be searched and paginated', function () {
     $region = Region::factory()->create();
-    $user = User::factory()->for($region)->create();
+    $user = incidentUser($region);
     $type = IncidentType::factory()->create(['name' => 'HAZING']);
     $subcategory = IncidentSubcategory::factory()->for($type)->create([
         'name' => 'Physical hazing',
@@ -164,15 +174,17 @@ test('incident numbers use the creation year type and a four character suffix', 
 test('users see report forms saved for their region', function () {
     $region = Region::factory()->create();
     $otherRegion = Region::factory()->create();
-    $user = User::factory()->for($region)->create();
-    $type = IncidentType::factory()->create(['name' => 'Fire']);
+    $user = incidentUser($region);
+    $type = IncidentType::factory()->for($region)->create(['name' => 'Fire']);
     $subcategory = IncidentSubcategory::factory()->for($type)->create(['name' => 'Structural fire']);
     $form = IncidentForm::factory()
         ->for($subcategory, 'subcategory')
         ->for($region)
         ->create(['title' => 'Fire report']);
+    $otherType = IncidentType::factory()->for($otherRegion)->create(['name' => 'Flood']);
+    $otherSubcategory = IncidentSubcategory::factory()->for($otherType)->create(['name' => 'Flash flood']);
     IncidentForm::factory()
-        ->for($subcategory, 'subcategory')
+        ->for($otherSubcategory, 'subcategory')
         ->for($otherRegion)
         ->create(['title' => 'Other region report']);
 
@@ -194,7 +206,7 @@ test('users see report forms saved for their region', function () {
 
 test('users can submit a regional incident report', function () {
     $region = Region::factory()->create();
-    $user = User::factory()->for($region)->create();
+    $user = incidentUser($region);
     $type = IncidentType::factory()->create(['name' => 'Medical']);
     $subcategory = IncidentSubcategory::factory()->for($type)->create(['name' => 'Emergency']);
     $form = IncidentForm::factory()
@@ -257,7 +269,7 @@ test('users can submit a regional incident report', function () {
 test('users cannot submit another regions report form', function () {
     $userRegion = Region::factory()->create();
     $otherRegion = Region::factory()->create();
-    $user = User::factory()->for($userRegion)->create();
+    $user = incidentUser($userRegion);
     $subcategory = IncidentSubcategory::factory()->create();
     IncidentForm::factory()
         ->for($subcategory, 'subcategory')
@@ -276,7 +288,7 @@ test('users cannot submit another regions report form', function () {
 
 test('required report fields are validated', function () {
     $region = Region::factory()->create();
-    $user = User::factory()->for($region)->create();
+    $user = incidentUser($region);
     $subcategory = IncidentSubcategory::factory()->create();
     $form = IncidentForm::factory()
         ->for($subcategory, 'subcategory')
@@ -298,10 +310,11 @@ test('required report fields are validated', function () {
     expect(Incident::query()->doesntExist())->toBeTrue();
 });
 
-test('users can edit incident report details without changing status', function () {
+test('administrators can edit incident report details without changing status', function () {
     $region = Region::factory()->create();
-    $user = User::factory()->for($region)->create();
-    $subcategory = IncidentSubcategory::factory()->create();
+    $user = incidentUser($region, UserRole::RegionalOfficeAdministrator);
+    $incidentType = IncidentType::factory()->for($region)->create();
+    $subcategory = IncidentSubcategory::factory()->for($incidentType)->create();
     IncidentStatus::factory()->for($subcategory, 'subcategory')->create([
         'name' => 'Closed',
         'icon' => IncidentStatusIcon::CircleCheck,
@@ -374,8 +387,8 @@ test('users can edit incident report details without changing status', function 
         ->assertSessionHasErrors('incident_subcategory_id');
 });
 
-test('users cannot update or delete incidents from another region', function () {
-    $user = User::factory()->for(Region::factory())->create();
+test('administrators cannot update or delete incidents from another region', function () {
+    $user = incidentUser(Region::factory()->create(), UserRole::RegionalOfficeAdministrator);
     $incident = Incident::factory()->for(Region::factory())->create();
 
     $this->actingAs($user)
@@ -393,12 +406,12 @@ test('users cannot update or delete incidents from another region', function () 
     $this->assertModelExists($incident);
 });
 
-test('users can delete regional incidents and their attachments', function () {
+test('administrators can delete regional incidents and their attachments', function () {
     Storage::fake('local');
     Storage::disk('local')->put('incident-reports/evidence.pdf', 'evidence');
 
     $region = Region::factory()->create();
-    $user = User::factory()->for($region)->create();
+    $user = incidentUser($region, UserRole::RegionalOfficeAdministrator);
     $incident = Incident::factory()->for($region)->create([
         'report_data' => [
             'sections' => [
@@ -425,6 +438,42 @@ test('users can delete regional incidents and their attachments', function () {
 
     $this->assertModelMissing($incident);
     Storage::disk('local')->assertMissing('incident-reports/evidence.pdf');
+});
+
+test('staff can file and reply but cannot edit delete or route incidents', function () {
+    $centralRegion = Region::query()->firstOrCreate(['name' => Region::CentralOffice]);
+    $region = Region::factory()->create();
+    $staff = incidentUser($region);
+    $incident = Incident::factory()->for($region)->create(['status' => 'Pending']);
+
+    $this->actingAs($staff)
+        ->get(route('incidents.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('access.can_file', true)
+            ->where('access.can_manage', false)
+            ->where('incidents.data.0.can_manage', false)
+        );
+
+    $this->actingAs($staff)
+        ->get(route('incidents.show', $incident))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('incident.can_respond', true)
+            ->where('routing.can_manage', false)
+        );
+
+    $this->actingAs($staff)
+        ->post(route('incidents.messages.store', $incident), ['message' => 'Staff response'])
+        ->assertRedirect();
+
+    $this->actingAs($staff)->get(route('incidents.edit', $incident))->assertForbidden();
+    $this->actingAs($staff)->put(route('incidents.update', $incident), [])->assertForbidden();
+    $this->actingAs($staff)->delete(route('incidents.destroy', $incident))->assertForbidden();
+    $this->actingAs($staff)
+        ->put(route('incidents.routing.update', $incident), ['region_ids' => [$centralRegion->id]])
+        ->assertForbidden();
+
+    expect($incident->messages()->value('message'))->toBe('Staff response');
+    $this->assertModelExists($incident);
 });
 
 test('users can view a regional incident report and its conversation', function () {
@@ -561,7 +610,7 @@ test('users can send incident messages with up to five public attachments', func
     Storage::fake('public');
 
     $region = Region::factory()->create();
-    $user = User::factory()->for($region)->create();
+    $user = incidentUser($region);
     $incident = Incident::factory()->for($region)->create(['status' => 'Pending']);
     $attachments = [
         UploadedFile::fake()->image('photo.jpg')->size(100),
@@ -591,7 +640,7 @@ test('incident message attachments enforce file count type and size limits', fun
     Storage::fake('public');
 
     $region = Region::factory()->create();
-    $user = User::factory()->for($region)->create();
+    $user = incidentUser($region);
     $incident = Incident::factory()->for($region)->create(['status' => 'Pending']);
 
     $this->actingAs($user)
@@ -713,8 +762,18 @@ test('super admins can access and filter incidents across regions', function () 
         ->for($centralRegion)
         ->for($superAdminRole, 'userRole')
         ->create();
-    $centralIncident = Incident::factory()->for($centralRegion)->create();
-    $regionalIncident = Incident::factory()->for($regionalOffice)->create(['status' => 'Pending']);
+    $centralType = IncidentType::factory()->for($centralRegion)->create();
+    $centralSubcategory = IncidentSubcategory::factory()->for($centralType)->create();
+    $regionalType = IncidentType::factory()->for($regionalOffice)->create();
+    $regionalSubcategory = IncidentSubcategory::factory()->for($regionalType)->create();
+    $centralIncident = Incident::factory()
+        ->for($centralRegion)
+        ->for($centralSubcategory, 'subcategory')
+        ->create();
+    $regionalIncident = Incident::factory()
+        ->for($regionalOffice)
+        ->for($regionalSubcategory, 'subcategory')
+        ->create(['status' => 'Pending']);
 
     $this->actingAs($superAdmin)
         ->get(route('incidents.index'))
@@ -740,10 +799,10 @@ test('super admins can access and filter incidents across regions', function () 
     expect($centralIncident->region_id)->toBe($centralRegion->id);
 });
 
-test('regional offices can route incidents to central office for shared conversation access', function () {
+test('regional administrators can route incidents to central office for staff conversation access', function () {
     $centralRegion = Region::query()->firstOrCreate(['name' => Region::CentralOffice]);
     $regionalOffice = Region::factory()->create();
-    $regionalRole = UserRole::query()->create(['name' => UserRole::RegionalOfficeStaff]);
+    $regionalRole = UserRole::query()->create(['name' => UserRole::RegionalOfficeAdministrator]);
     $centralRole = UserRole::query()->create(['name' => UserRole::CentralOfficeStaff]);
     $agencyRole = UserRole::query()->create(['name' => UserRole::Agency]);
     $regionalUser = User::factory()
@@ -785,17 +844,21 @@ test('regional offices can route incidents to central office for shared conversa
         ->assertSuccessful();
 
     $this->actingAs($agencyUser)
+        ->post(route('incidents.messages.store', $incident), ['message' => 'Agency response'])
+        ->assertForbidden();
+
+    $this->actingAs($agencyUser)
         ->put(route('incidents.routing.update', $incident), ['region_ids' => []])
         ->assertForbidden();
 
     expect($incident->messages()->value('message'))->toBe('Central Office response');
 });
 
-test('central office can route incidents to regional offices and their agencies', function () {
+test('central office administrators can route incidents to regional staff', function () {
     $centralRegion = Region::query()->firstOrCreate(['name' => Region::CentralOffice]);
     $targetRegion = Region::factory()->create();
     $otherRegion = Region::factory()->create();
-    $centralRole = UserRole::query()->create(['name' => UserRole::CentralOfficeStaff]);
+    $centralRole = UserRole::query()->create(['name' => UserRole::CentralOfficeAdministrator]);
     $regionalRole = UserRole::query()->create(['name' => UserRole::RegionalOfficeStaff]);
     $agencyRole = UserRole::query()->create(['name' => UserRole::Agency]);
     $centralUser = User::factory()
@@ -828,16 +891,13 @@ test('central office can route incidents to regional offices and their agencies'
 
     $this->actingAs($agencyUser)
         ->post(route('incidents.messages.store', $incident), ['message' => 'Agency response'])
-        ->assertRedirect();
+        ->assertForbidden();
 
     $this->actingAs($otherAgencyUser)
         ->get(route('incidents.show', $incident))
         ->assertForbidden();
 
-    expect($incident->messages()->pluck('message')->all())->toBe([
-        'Regional Office response',
-        'Agency response',
-    ]);
+    expect($incident->messages()->pluck('message')->all())->toBe(['Regional Office response']);
 });
 
 test('only accessible central and regional office administrators can manage incident status', function () {

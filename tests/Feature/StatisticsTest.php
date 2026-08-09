@@ -44,7 +44,7 @@ test('statistics group regional incident reports by year type and subcategory', 
     $region = Region::factory()->create();
     $otherRegion = Region::factory()->create();
     $user = statisticsAdministrator($region);
-    $incidentType = IncidentType::factory()->create(['name' => 'Child Protection']);
+    $incidentType = IncidentType::factory()->for($region)->create(['name' => 'Child Protection']);
     $subcategory = IncidentSubcategory::factory()->for($incidentType)->create([
         'name' => 'Bullying',
     ]);
@@ -72,7 +72,9 @@ test('statistics group regional incident reports by year type and subcategory', 
         'status' => 'Monitoring',
         'created_at' => '2024-05-01 08:00:00',
     ]);
-    Incident::factory()->for($otherRegion)->for($subcategory, 'subcategory')->create([
+    $otherIncidentType = IncidentType::factory()->for($otherRegion)->create();
+    $otherSubcategory = IncidentSubcategory::factory()->for($otherIncidentType)->create();
+    Incident::factory()->for($otherRegion)->for($otherSubcategory, 'subcategory')->create([
         'status' => 'Closed',
         'created_at' => '2025-05-01 08:00:00',
     ]);
@@ -117,8 +119,16 @@ test('super admins can view all statistics and filter by region', function () {
     $centralRegion = Region::query()->firstOrCreate(['name' => Region::CentralOffice]);
     $regionalOffice = Region::factory()->create();
     $superAdmin = statisticsAdministrator($centralRegion, UserRole::SuperAdmin);
-    Incident::factory()->for($centralRegion)->create();
-    Incident::factory()->count(2)->for($regionalOffice)->create();
+    $centralType = IncidentType::factory()->for($centralRegion)->create();
+    $centralSubcategory = IncidentSubcategory::factory()->for($centralType)->create();
+    $regionalType = IncidentType::factory()->for($regionalOffice)->create();
+    $regionalSubcategory = IncidentSubcategory::factory()->for($regionalType)->create();
+    Incident::factory()->for($centralRegion)->for($centralSubcategory, 'subcategory')->create();
+    Incident::factory()
+        ->count(2)
+        ->for($regionalOffice)
+        ->for($regionalSubcategory, 'subcategory')
+        ->create();
 
     $this->actingAs($superAdmin)
         ->get(route('statistics'))

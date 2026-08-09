@@ -100,7 +100,7 @@ class IncidentController extends Controller
                 ->latest()
                 ->paginate(10)
                 ->withQueryString()
-                ->through(function (Incident $incident): array {
+                ->through(function (Incident $incident) use ($user): array {
                     $statusDefinitions = $incident->subcategory->statuses->isEmpty()
                         ? collect(IncidentStatus::defaults())
                         : $incident->subcategory->statuses->map(fn (IncidentStatus $status): array => [
@@ -124,8 +124,13 @@ class IncidentController extends Controller
                             'unresolved' => IncidentStatusIcon::CircleAlert->value,
                             default => IncidentStatusIcon::Clock->value,
                         },
+                        'can_manage' => $incident->isManageableBy($user),
                     ];
                 }),
+            'access' => [
+                'can_file' => $user->canFileIncidents(),
+                'can_manage' => $user->canManageIncidents(),
+            ],
             'filters' => [
                 'search' => $search,
                 'year' => $year,
@@ -144,6 +149,8 @@ class IncidentController extends Controller
 
     public function create(Request $request): Response
     {
+        abort_unless($request->user()?->canFileIncidents(), 403);
+
         return Inertia::render('incidents/create', [
             'incidentTypes' => $this->incidentTypesForRegion($request->user()?->region_id),
         ]);
@@ -193,6 +200,7 @@ class IncidentController extends Controller
                 'status_icon' => $statusDefinition['icon'],
                 'managed_statuses' => $incident->managedStatusDefinitions()->all(),
                 'conversation_open' => $incident->conversationIsOpen(),
+                'can_respond' => $request->user()->canRespondToIncidents(),
                 'can_manage_status' => $request->user()->can('manage-incident-statuses'),
             ],
             'conversation' => fn (): array => [
@@ -242,7 +250,7 @@ class IncidentController extends Controller
 
     public function edit(Request $request, Incident $incident): Response
     {
-        abort_unless($request->user()->canAccessRegion($incident->region_id), 403);
+        abort_unless($incident->isManageableBy($request->user()), 403);
 
         $incidentTypes = $this->incidentTypesForRegion($incident->region_id);
         $incident->load('subcategory:id,incident_type_id,name');
@@ -335,7 +343,7 @@ class IncidentController extends Controller
 
     public function destroy(Request $request, Incident $incident): RedirectResponse
     {
-        abort_unless($request->user()->canAccessRegion($incident->region_id), 403);
+        abort_unless($incident->isManageableBy($request->user()), 403);
 
         $filePaths = $this->reportFilePaths($incident->report_data);
         $messageFilePaths = $incident->messages()
@@ -357,11 +365,13 @@ class IncidentController extends Controller
     private function incidentTypesForRegion(?string $regionId): Collection
     {
         return IncidentType::query()
-            ->select('id', 'name')
+            ->select('id', 'region_id', 'name')
+            ->where('region_id', $regionId)
             ->whereHas('subcategories.forms', fn (Builder $query) => $query->where('region_id', $regionId))
             ->with(['subcategories' => function (HasMany $query) use ($regionId): void {
                 $query
-                    ->select('id', 'incident_type_id', 'name')
+                    ->select('id', 'incident_type_id', 'region_id', 'name')
+                    ->where('region_id', $regionId)
                     ->whereHas('forms', fn (Builder $formQuery) => $formQuery->where('region_id', $regionId))
                     ->with([
                         'forms' => function (HasMany $formQuery) use ($regionId): void {

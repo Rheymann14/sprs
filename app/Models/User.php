@@ -92,6 +92,21 @@ class User extends Authenticatable
         return $this->userRole?->organization_group;
     }
 
+    public function canFileIncidents(): bool
+    {
+        return $this->hasRole(...UserRole::incidentResponderNames());
+    }
+
+    public function canRespondToIncidents(): bool
+    {
+        return $this->hasRole(...UserRole::incidentResponderNames());
+    }
+
+    public function canManageIncidents(): bool
+    {
+        return $this->hasRole(...UserRole::incidentAdministratorNames());
+    }
+
     /**
      * Get the attributes that should be cast.
      *

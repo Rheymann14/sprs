@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use App\Enums\IncidentStatusIcon;
-use App\Enums\UserRoleGroup;
 use Database\Factories\IncidentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Collection;
@@ -73,19 +72,20 @@ class Incident extends Model
 
     public function routingIsManageableBy(User $user): bool
     {
-        if ($user->isSuperAdmin()) {
-            return true;
-        }
+        return $this->isManageableBy($user);
+    }
 
-        if ($user->region_id !== $this->region_id) {
-            return false;
-        }
+    public function isManageableBy(User $user): bool
+    {
+        return $user->canManageIncidents()
+            && $user->canAccessRegion($this->region_id);
+    }
 
-        $originatesFromCentralOffice = $this->region()->where('name', Region::CentralOffice)->exists();
-
-        return $originatesFromCentralOffice
-            ? $user->roleGroup() === UserRoleGroup::CentralOffice
-            : $user->roleGroup() === UserRoleGroup::RegionalOffice;
+    public function conversationIsRespondableBy(User $user): bool
+    {
+        return $user->canRespondToIncidents()
+            && $this->isAccessibleBy($user)
+            && $this->conversationIsOpen();
     }
 
     /** @return HasMany<IncidentMessage, $this> */

@@ -14,7 +14,12 @@ class UpdateIncidentTypeRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user()?->can('manage-forms') ?? false;
+        $incidentType = $this->route('incident_type');
+
+        return $incidentType instanceof IncidentType
+            && $this->user() !== null
+            && $this->user()->can('manage-forms')
+            && $this->user()->canAccessRegion($incidentType->region_id);
     }
 
     /**
@@ -29,7 +34,9 @@ class UpdateIncidentTypeRequest extends FormRequest
                 'required',
                 'string',
                 'max:255',
-                Rule::unique(IncidentType::class)->ignore($this->route('incident_type')),
+                Rule::unique(IncidentType::class)
+                    ->where('region_id', $this->route('incident_type')->region_id)
+                    ->ignore($this->route('incident_type')),
             ],
         ];
     }

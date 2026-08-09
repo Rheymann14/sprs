@@ -178,6 +178,7 @@ type PageProps = {
         region_id: string;
     };
     regions: Array<{ id: string; name: string }>;
+    region: { id: string; name: string } | null;
     selection: {
         incident_type_id: string | null;
         subcategory_id: string | null;
@@ -468,6 +469,7 @@ export default function FormManagement({
     savedForms,
     filters,
     regions,
+    region,
     selection,
 }: PageProps) {
     const initialSubcategory = incidentTypes
@@ -505,7 +507,10 @@ export default function FormManagement({
         () => new Set(),
     );
 
-    const incidentTypeForm = useForm({ name: '' });
+    const incidentTypeForm = useForm({
+        region_id: filters.region_id,
+        name: '',
+    });
     const createSubcategoryForm = useForm({ names: [''] });
     const editSubcategoryForm = useForm({ name: '' });
     const statusForm = useForm<{ statuses: IncidentStatus[] }>({
@@ -586,7 +591,10 @@ export default function FormManagement({
 
     const openIncidentTypeDialog = (incidentType: IncidentType | null) => {
         setEditingIncidentType(incidentType);
-        incidentTypeForm.setData('name', incidentType?.name ?? '');
+        incidentTypeForm.setData({
+            region_id: filters.region_id,
+            name: incidentType?.name ?? '',
+        });
         incidentTypeForm.clearErrors();
         setIncidentTypeDialogOpen(true);
     };
@@ -1101,7 +1109,12 @@ export default function FormManagement({
                             <CardTitle>Form assignment</CardTitle>
                             <CardDescription>
                                 Select an incident type, then choose the
-                                subcategory whose form you want to edit.
+                                subcategory whose form you want to edit. Only
+                                entries configured for{' '}
+                                <span className="font-medium text-foreground">
+                                    {region?.name ?? 'this region'}
+                                </span>{' '}
+                                are shown.
                             </CardDescription>
                         </div>
                         <Button
@@ -2478,7 +2491,8 @@ export default function FormManagement({
                             </DialogTitle>
                             <DialogDescription>
                                 Incident types are the top-level grouping for
-                                managed forms.
+                                managed forms in{' '}
+                                {region?.name ?? 'the selected region'}.
                             </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-2">
@@ -2497,6 +2511,11 @@ export default function FormManagement({
                             {incidentTypeForm.errors.name && (
                                 <p className="text-sm text-destructive">
                                     {incidentTypeForm.errors.name}
+                                </p>
+                            )}
+                            {incidentTypeForm.errors.region_id && (
+                                <p className="text-sm text-destructive">
+                                    {incidentTypeForm.errors.region_id}
                                 </p>
                             )}
                         </div>

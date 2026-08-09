@@ -57,6 +57,7 @@ class IncidentStatusController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Statuses saved.')]);
 
         return to_route('form-management.index', [
+            'region_id' => $incidentType->region_id,
             'incident_type' => $incidentType->id,
             'subcategory' => $subcategory->id,
         ]);

@@ -54,7 +54,7 @@ test('super admins have full form management access', function () {
 
 test('administrators can view normalized form definitions', function () {
     $administrator = administrator();
-    $incidentType = IncidentType::factory()->create(['name' => 'Fire']);
+    $incidentType = IncidentType::factory()->for($administrator->region)->create(['name' => 'Fire']);
     $subcategory = IncidentSubcategory::factory()
         ->for($incidentType)
         ->create(['name' => 'Structural fire']);
@@ -85,7 +85,7 @@ test('administrators can view normalized form definitions', function () {
 
 test('administrators can customize up to three statuses for a subcategory', function () {
     $administrator = administrator();
-    $incidentType = IncidentType::factory()->create();
+    $incidentType = IncidentType::factory()->for($administrator->region)->create();
     $subcategory = IncidentSubcategory::factory()->for($incidentType)->create();
     $incident = Incident::factory()
         ->for($administrator->region)
@@ -101,6 +101,7 @@ test('administrators can customize up to three statuses for a subcategory', func
             ],
         ])
         ->assertRedirect(route('form-management.index', [
+            'region_id' => $incidentType->region_id,
             'incident_type' => $incidentType->id,
             'subcategory' => $subcategory->id,
         ]))
@@ -128,10 +129,11 @@ test('administrators can customize up to three statuses for a subcategory', func
 });
 
 test('status management rejects more than three statuses and invalid icons', function () {
-    $incidentType = IncidentType::factory()->create();
+    $administrator = administrator();
+    $incidentType = IncidentType::factory()->for($administrator->region)->create();
     $subcategory = IncidentSubcategory::factory()->for($incidentType)->create();
 
-    $this->actingAs(administrator())
+    $this->actingAs($administrator)
         ->put(route('incident-types.subcategories.statuses.update', [$incidentType, $subcategory]), [
             'statuses' => [
                 ['name' => 'One', 'icon' => IncidentStatusIcon::CircleCheck->value],
@@ -147,7 +149,7 @@ test('status management rejects more than three statuses and invalid icons', fun
 
 test('administrators can search and paginate saved forms and open an assignment', function () {
     $administrator = administrator();
-    $incidentType = IncidentType::factory()->create(['name' => 'Medical Emergency']);
+    $incidentType = IncidentType::factory()->for($administrator->region)->create(['name' => 'Medical Emergency']);
     $subcategory = IncidentSubcategory::factory()
         ->for($incidentType)
         ->create(['name' => 'Cardiac Response']);
@@ -192,7 +194,7 @@ test('administrators can search and paginate saved forms and open an assignment'
 
 test('saved forms can be filtered by incident type without selecting a subcategory', function () {
     $administrator = administrator();
-    $selectedIncidentType = IncidentType::factory()->create(['name' => 'Fire']);
+    $selectedIncidentType = IncidentType::factory()->for($administrator->region)->create(['name' => 'Fire']);
     $selectedSubcategory = IncidentSubcategory::factory()
         ->for($selectedIncidentType)
         ->create(['name' => 'Structural fire']);
@@ -219,8 +221,11 @@ test('administrators can create and rename incident types and subcategories', fu
     $administrator = administrator();
 
     $this->actingAs($administrator)
-        ->post(route('incident-types.store'), ['name' => 'Medical'])
-        ->assertRedirect(route('form-management.index'))
+        ->post(route('incident-types.store'), [
+            'region_id' => $administrator->region_id,
+            'name' => 'Medical',
+        ])
+        ->assertRedirect(route('form-management.index', ['region_id' => $administrator->region_id]))
         ->assertInertiaFlash('toast.type', 'success')
         ->assertInertiaFlash('toast.message', 'Incident type created.');
 
@@ -228,14 +233,14 @@ test('administrators can create and rename incident types and subcategories', fu
 
     $this->actingAs($administrator)
         ->put(route('incident-types.update', $incidentType), ['name' => 'Medical Emergency'])
-        ->assertRedirect(route('form-management.index'))
+        ->assertRedirect(route('form-management.index', ['region_id' => $incidentType->region_id]))
         ->assertInertiaFlash('toast.message', 'Incident type updated.');
 
     $this->actingAs($administrator)
         ->post(route('incident-types.subcategories.store', $incidentType), [
             'names' => ['Trauma', 'Cardiac emergency'],
         ])
-        ->assertRedirect(route('form-management.index'))
+        ->assertRedirect(route('form-management.index', ['region_id' => $incidentType->region_id]))
         ->assertInertiaFlash('toast.message', 'Subcategories created.');
 
     $subcategory = $incidentType->subcategories()->where('name', 'Trauma')->firstOrFail();
@@ -244,7 +249,7 @@ test('administrators can create and rename incident types and subcategories', fu
         ->put(route('incident-types.subcategories.update', [$incidentType, $subcategory]), [
             'name' => 'Major trauma',
         ])
-        ->assertRedirect(route('form-management.index'))
+        ->assertRedirect(route('form-management.index', ['region_id' => $incidentType->region_id]))
         ->assertInertiaFlash('toast.message', 'Subcategory updated.');
 
     expect($incidentType->refresh()->name)->toBe('Medical Emergency')
@@ -253,9 +258,10 @@ test('administrators can create and rename incident types and subcategories', fu
 });
 
 test('duplicate subcategory names in a batch are rejected', function () {
-    $incidentType = IncidentType::factory()->create();
+    $administrator = administrator();
+    $incidentType = IncidentType::factory()->for($administrator->region)->create();
 
-    $this->actingAs(administrator())
+    $this->actingAs($administrator)
         ->post(route('incident-types.subcategories.store', $incidentType), [
             'names' => ['Vehicle collision', 'vehicle collision'],
         ])
@@ -265,8 +271,9 @@ test('duplicate subcategory names in a batch are rejected', function () {
 });
 
 test('administrators can save a dynamic form into normalized tables', function () {
-    $subcategory = IncidentSubcategory::factory()->create();
     $administrator = administrator();
+    $incidentType = IncidentType::factory()->for($administrator->region)->create();
+    $subcategory = IncidentSubcategory::factory()->for($incidentType)->create();
 
     $response = $this->actingAs($administrator)
         ->put(route('incident-subcategories.form.update', $subcategory), [
@@ -324,19 +331,22 @@ test('administrators only see and edit forms in their own region', function () {
     $secondRegion = Region::factory()->create();
     $firstAdministrator = administrator($firstRegion);
     $secondAdministrator = administrator($secondRegion);
-    $subcategory = IncidentSubcategory::factory()->create();
+    $firstIncidentType = IncidentType::factory()->for($firstRegion)->create();
+    $firstSubcategory = IncidentSubcategory::factory()->for($firstIncidentType)->create();
+    $secondIncidentType = IncidentType::factory()->for($secondRegion)->create();
+    $secondSubcategory = IncidentSubcategory::factory()->for($secondIncidentType)->create();
 
     $firstForm = IncidentForm::factory()
-        ->for($subcategory, 'subcategory')
+        ->for($firstSubcategory, 'subcategory')
         ->for($firstRegion)
         ->create(['title' => 'Region I form']);
     $secondForm = IncidentForm::factory()
-        ->for($subcategory, 'subcategory')
+        ->for($secondSubcategory, 'subcategory')
         ->for($secondRegion)
         ->create(['title' => 'Region II form']);
 
     $this->actingAs($firstAdministrator)
-        ->put(route('incident-subcategories.form.update', $subcategory), [
+        ->put(route('incident-subcategories.form.update', $firstSubcategory), [
             'region_id' => $firstRegion->id,
             'title' => 'Updated Region I form',
             'description' => null,
@@ -355,7 +365,7 @@ test('administrators only see and edit forms in their own region', function () {
         ->and($secondForm->refresh()->title)->toBe('Region II form');
 
     $this->actingAs($firstAdministrator)
-        ->put(route('incident-subcategories.form.update', $subcategory), [
+        ->put(route('incident-subcategories.form.update', $firstSubcategory), [
             'region_id' => $secondRegion->id,
             'title' => 'Unauthorized update',
             'sections' => [[
@@ -388,7 +398,8 @@ test('super admins can filter and edit forms across regions', function () {
     $centralRegion = Region::query()->firstOrCreate(['name' => Region::CentralOffice]);
     $regionalOffice = Region::factory()->create();
     $superAdmin = superAdministrator($centralRegion);
-    $subcategory = IncidentSubcategory::factory()->create();
+    $incidentType = IncidentType::factory()->for($regionalOffice)->create();
+    $subcategory = IncidentSubcategory::factory()->for($incidentType)->create();
     $regionalForm = IncidentForm::factory()
         ->for($subcategory, 'subcategory')
         ->for($regionalOffice)
@@ -420,9 +431,105 @@ test('super admins can filter and edit forms across regions', function () {
     expect($regionalForm->refresh()->title)->toBe('Updated regional form');
 });
 
-test('dropdown and radio fields require at least two options', function (string $type) {
-    $subcategory = IncidentSubcategory::factory()->create();
+test('central and regional administrators only see incident definitions configured for their region', function () {
+    $centralRegion = Region::query()->firstOrCreate(['name' => Region::CentralOffice]);
+    $regionalOffice = Region::factory()->create();
+    $centralRole = UserRole::query()->firstOrCreate(['name' => UserRole::CentralOfficeAdministrator]);
+    $centralAdministrator = User::factory()
+        ->for($centralRegion)
+        ->for($centralRole, 'userRole')
+        ->create();
+    $regionalAdministrator = administrator($regionalOffice);
+
+    $centralType = IncidentType::factory()->for($centralRegion)->create(['name' => 'Central concern']);
+    IncidentSubcategory::factory()->for($centralType)->create(['name' => 'Central category']);
+    $regionalType = IncidentType::factory()->for($regionalOffice)->create(['name' => 'Regional concern']);
+    IncidentSubcategory::factory()->for($regionalType)->create(['name' => 'Regional category']);
+
+    $this->actingAs($centralAdministrator)
+        ->get(route('form-management.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('region.id', $centralRegion->id)
+            ->has('incidentTypes', 1)
+            ->where('incidentTypes.0.name', 'Central concern')
+            ->where('incidentTypes.0.subcategories.0.name', 'Central category')
+        );
+
+    $this->actingAs($regionalAdministrator)
+        ->get(route('form-management.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('region.id', $regionalOffice->id)
+            ->has('incidentTypes', 1)
+            ->where('incidentTypes.0.name', 'Regional concern')
+            ->where('incidentTypes.0.subcategories.0.name', 'Regional category')
+        );
+});
+
+test('administrators cannot manage incident definitions configured for another region', function () {
     $administrator = administrator();
+    $otherRegion = Region::factory()->create();
+    $otherType = IncidentType::factory()->for($otherRegion)->create();
+    $otherSubcategory = IncidentSubcategory::factory()->for($otherType)->create();
+
+    $this->actingAs($administrator)
+        ->post(route('incident-types.store'), [
+            'region_id' => $otherRegion->id,
+            'name' => 'Unauthorized type',
+        ])
+        ->assertSessionHasErrors('region_id');
+
+    $this->actingAs($administrator)
+        ->put(route('incident-types.update', $otherType), ['name' => 'Unauthorized rename'])
+        ->assertForbidden();
+
+    $this->actingAs($administrator)
+        ->post(route('incident-types.subcategories.store', $otherType), ['names' => ['Unauthorized category']])
+        ->assertForbidden();
+
+    $this->actingAs($administrator)
+        ->put(route('incident-types.subcategories.update', [$otherType, $otherSubcategory]), [
+            'name' => 'Unauthorized rename',
+        ])
+        ->assertForbidden();
+
+    $this->actingAs($administrator)
+        ->delete(route('incident-types.subcategories.destroy', [$otherType, $otherSubcategory]))
+        ->assertForbidden();
+
+    $this->actingAs($administrator)
+        ->delete(route('incident-types.destroy', $otherType))
+        ->assertForbidden();
+
+    expect($otherType->refresh()->name)->not->toBe('Unauthorized rename')
+        ->and($otherSubcategory->refresh()->name)->not->toBe('Unauthorized rename')
+        ->and(IncidentType::query()->where('name', 'Unauthorized type')->doesntExist())->toBeTrue();
+});
+
+test('incident type names are unique within a region but reusable in another region', function () {
+    $firstAdministrator = administrator();
+    $secondAdministrator = administrator();
+
+    $this->actingAs($firstAdministrator)
+        ->post(route('incident-types.store'), [
+            'region_id' => $firstAdministrator->region_id,
+            'name' => 'Public safety',
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $this->actingAs($secondAdministrator)
+        ->post(route('incident-types.store'), [
+            'region_id' => $secondAdministrator->region_id,
+            'name' => 'Public safety',
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    expect(IncidentType::query()->where('name', 'Public safety')->count())->toBe(2);
+});
+
+test('dropdown and radio fields require at least two options', function (string $type) {
+    $administrator = administrator();
+    $incidentType = IncidentType::factory()->for($administrator->region)->create();
+    $subcategory = IncidentSubcategory::factory()->for($incidentType)->create();
 
     $this->actingAs($administrator)
         ->put(route('incident-subcategories.form.update', $subcategory), [
@@ -457,8 +564,9 @@ test('dropdown and radio fields require at least two options', function (string 
 ]);
 
 test('form validation messages use plain language', function () {
-    $subcategory = IncidentSubcategory::factory()->create();
     $administrator = administrator();
+    $incidentType = IncidentType::factory()->for($administrator->region)->create();
+    $subcategory = IncidentSubcategory::factory()->for($incidentType)->create();
 
     $this->actingAs($administrator)
         ->put(route('incident-subcategories.form.update', $subcategory), [

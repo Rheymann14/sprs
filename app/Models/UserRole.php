@@ -176,6 +176,34 @@ class UserRole extends Model
     }
 
     /**
+     * Get the roles allowed to manage incident reports and routing.
+     *
+     * @return list<string>
+     */
+    public static function incidentAdministratorNames(): array
+    {
+        return [
+            self::SuperAdmin,
+            self::CentralOfficeAdministrator,
+            self::RegionalOfficeAdministrator,
+        ];
+    }
+
+    /**
+     * Get the roles allowed to file reports and respond to conversations.
+     *
+     * @return list<string>
+     */
+    public static function incidentResponderNames(): array
+    {
+        return [
+            ...self::incidentAdministratorNames(),
+            self::CentralOfficeStaff,
+            self::RegionalOfficeStaff,
+        ];
+    }
+
+    /**
      * Get the users assigned to this role.
      *
      * @return HasMany<User, $this>

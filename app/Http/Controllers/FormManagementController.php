@@ -9,6 +9,7 @@ use App\Models\IncidentSubcategory;
 use App\Models\IncidentType;
 use App\Models\Region;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -25,10 +26,14 @@ class FormManagementController extends Controller
         $regionId = $user->isSuperAdmin()
             ? Region::query()->whereKey($requestedRegionId)->value('id') ?? $user->region_id
             : $user->region_id;
+        $effectiveRegion = Region::query()->select('id', 'name')->find($regionId);
         $incidentTypes = IncidentType::query()
-            ->select('id', 'name')
+            ->select('id', 'region_id', 'name')
+            ->where('region_id', $regionId)
             ->with([
-                'subcategories:id,incident_type_id,name',
+                'subcategories' => fn (HasMany $query) => $query
+                    ->select('id', 'incident_type_id', 'region_id', 'name')
+                    ->where('region_id', $regionId),
                 'subcategories.statuses:id,incident_subcategory_id,name,icon,sort_order',
                 'subcategories.form' => function (HasOne $query) use ($regionId): void {
                     $query
@@ -67,8 +72,8 @@ class FormManagementController extends Controller
                 ->select('id', 'incident_subcategory_id', 'created_at')
                 ->where('region_id', $regionId)
                 ->with([
-                    'subcategory:id,incident_type_id,name',
-                    'subcategory.incidentType:id,name',
+                    'subcategory:id,incident_type_id,region_id,name',
+                    'subcategory.incidentType:id,region_id,name',
                 ])
                 ->when($hasValidIncidentType, function (Builder $query) use ($selectedIncidentTypeId): void {
                     $query->whereHas('subcategory', function (Builder $subcategoryQuery) use ($selectedIncidentTypeId): void {
@@ -103,6 +108,7 @@ class FormManagementController extends Controller
             'regions' => $user->isSuperAdmin()
                 ? Region::query()->select('id', 'name')->orderBy('name')->get()
                 : [],
+            'region' => $effectiveRegion,
             'selection' => [
                 'incident_type_id' => $hasValidIncidentType ? $selectedIncidentTypeId : null,
                 'subcategory_id' => $hasValidSelection ? $selectedSubcategoryId : null,

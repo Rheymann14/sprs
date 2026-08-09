@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\IncidentType;
+use App\Models\Region;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -18,6 +19,7 @@ class IncidentTypeFactory extends Factory
     public function definition(): array
     {
         return [
+            'region_id' => Region::factory(),
             'name' => fake()->unique()->words(2, true),
         ];
     }

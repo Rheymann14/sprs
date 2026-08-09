@@ -51,6 +51,7 @@ type Incident = {
     status: string;
     status_label: string;
     status_icon: StatusIcon;
+    can_manage: boolean;
 };
 
 type StatusIcon = 'circle-check' | 'clock' | 'circle-alert';
@@ -67,6 +68,10 @@ type PaginatedIncidents = {
 type IncidentsProps = {
     incidents: PaginatedIncidents;
     regions: Array<{ id: string; name: string }>;
+    access: {
+        can_file: boolean;
+        can_manage: boolean;
+    };
     filters: {
         search: string;
         year: number | null;
@@ -112,6 +117,7 @@ export default function Incidents({
     incidents,
     filters,
     regions,
+    access,
 }: IncidentsProps) {
     const [searchQuery, setSearchQuery] = useState(filters.search);
     const [deletingIncident, setDeletingIncident] = useState<Incident | null>(
@@ -205,11 +211,27 @@ export default function Incidents({
                         title="Incidents"
                         description="Search and review incidents for the regions you can access."
                     />
-                    <Button asChild>
-                        <Link href={createIncident()}>
-                            <FilePlus2 /> File Report
-                        </Link>
-                    </Button>
+                    {access.can_file && (
+                        <Button asChild>
+                            <Link href={createIncident()}>
+                                <FilePlus2 /> File Report
+                            </Link>
+                        </Button>
+                    )}
+                </div>
+
+                <div className="flex items-start gap-3 rounded-xl border bg-muted/30 p-4 text-sm">
+                    <Siren className="mt-0.5 size-5 shrink-0 text-primary" />
+                    <div className="space-y-1">
+                        <p className="font-medium">Your incident access</p>
+                        <p className="text-muted-foreground">
+                            {access.can_manage
+                                ? 'As a CHED administrator, you can file reports, reply, edit, delete, route, and manage incident status for your office.'
+                                : access.can_file
+                                  ? 'As CHED staff, you can file reports and reply to open conversations. Only CHED administrators can edit, delete, route, or change status.'
+                                  : 'You can view incidents available to your region. Filing reports, replying, editing, deleting, and routing are limited to authorized CHED roles.'}
+                        </p>
+                    </div>
                 </div>
 
                 <Card>
@@ -397,34 +419,38 @@ export default function Incidents({
                                                                     <Eye /> View
                                                                 </Link>
                                                             </Button>
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                asChild
-                                                            >
-                                                                <Link
-                                                                    href={editIncident(
-                                                                        incident.id,
-                                                                    )}
-                                                                >
-                                                                    <Pencil />{' '}
-                                                                    Edit
-                                                                </Link>
-                                                            </Button>
-                                                            <Button
-                                                                type="button"
-                                                                size="sm"
-                                                                variant="outline"
-                                                                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                                                onClick={() =>
-                                                                    setDeletingIncident(
-                                                                        incident,
-                                                                    )
-                                                                }
-                                                            >
-                                                                <Trash2 />{' '}
-                                                                Delete
-                                                            </Button>
+                                                            {incident.can_manage && (
+                                                                <>
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant="outline"
+                                                                        asChild
+                                                                    >
+                                                                        <Link
+                                                                            href={editIncident(
+                                                                                incident.id,
+                                                                            )}
+                                                                        >
+                                                                            <Pencil />{' '}
+                                                                            Edit
+                                                                        </Link>
+                                                                    </Button>
+                                                                    <Button
+                                                                        type="button"
+                                                                        size="sm"
+                                                                        variant="outline"
+                                                                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                                        onClick={() =>
+                                                                            setDeletingIncident(
+                                                                                incident,
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        <Trash2 />{' '}
+                                                                        Delete
+                                                                    </Button>
+                                                                </>
+                                                            )}
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -464,7 +490,9 @@ export default function Incidents({
                                                     />
                                                 </div>
                                             </div>
-                                            <div className="mt-4 grid grid-cols-3 gap-2 border-t pt-4">
+                                            <div
+                                                className={`mt-4 grid gap-2 border-t pt-4 ${incident.can_manage ? 'grid-cols-3' : 'grid-cols-1'}`}
+                                            >
                                                 <Button
                                                     size="sm"
                                                     variant="outline"
@@ -478,32 +506,36 @@ export default function Incidents({
                                                         <Eye /> View
                                                     </Link>
                                                 </Button>
-                                                <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    asChild
-                                                >
-                                                    <Link
-                                                        href={editIncident(
-                                                            incident.id,
-                                                        )}
-                                                    >
-                                                        <Pencil /> Edit
-                                                    </Link>
-                                                </Button>
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    variant="outline"
-                                                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                                    onClick={() =>
-                                                        setDeletingIncident(
-                                                            incident,
-                                                        )
-                                                    }
-                                                >
-                                                    <Trash2 /> Delete
-                                                </Button>
+                                                {incident.can_manage && (
+                                                    <>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            asChild
+                                                        >
+                                                            <Link
+                                                                href={editIncident(
+                                                                    incident.id,
+                                                                )}
+                                                            >
+                                                                <Pencil /> Edit
+                                                            </Link>
+                                                        </Button>
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                            onClick={() =>
+                                                                setDeletingIncident(
+                                                                    incident,
+                                                                )
+                                                            }
+                                                        >
+                                                            <Trash2 /> Delete
+                                                        </Button>
+                                                    </>
+                                                )}
                                             </div>
                                         </article>
                                     ))}

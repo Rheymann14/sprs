@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\FormFieldType;
+use App\Models\IncidentSubcategory;
 use App\Models\Region;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -16,8 +17,12 @@ class UpdateIncidentFormRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user()?->region_id !== null
-            && $this->user()->can('manage-forms');
+        $subcategory = $this->route('incident_subcategory');
+
+        return $subcategory instanceof IncidentSubcategory
+            && $this->user() !== null
+            && $this->user()->can('manage-forms')
+            && $this->user()->canAccessRegion($subcategory->region_id);
     }
 
     /**
@@ -29,8 +34,10 @@ class UpdateIncidentFormRequest extends FormRequest
     {
         $regionRules = ['required', 'string', Rule::exists(Region::class, 'id')];
 
-        if (! $this->user()->isSuperAdmin()) {
-            $regionRules[] = Rule::in([$this->user()->region_id]);
+        $subcategory = $this->route('incident_subcategory');
+
+        if ($subcategory instanceof IncidentSubcategory) {
+            $regionRules[] = Rule::in([$subcategory->region_id]);
         }
 
         return [

@@ -17,8 +17,8 @@ class StoreIncidentMessageRequest extends FormRequest
         $incident = $this->route('incident');
 
         return $incident instanceof Incident
-            && ($this->user() !== null && $incident->isAccessibleBy($this->user()))
-            && $incident->conversationIsOpen();
+            && $this->user() !== null
+            && $incident->conversationIsRespondableBy($this->user());
     }
 
     /**

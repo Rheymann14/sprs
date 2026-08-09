@@ -553,6 +553,7 @@ test('users can view a regional incident report and its conversation', function 
         ->get(route('incidents.show', $incident))
         ->assertInertia(fn (Assert $page) => $page
             ->component('incidents/show')
+            ->where('incident.incident_number', $incident->incident_number)
             ->where('incident.report_title', 'Saved incident report')
             ->where('incident.report_sections.0.fields.0.value', 'Main campus')
             ->where('incident.report_sections.0.fields.1.attachment.name', 'report.pdf')

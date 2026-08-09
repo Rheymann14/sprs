@@ -21,7 +21,6 @@ import {
 } from '@/actions/App/Http/Controllers/IncidentController';
 import { store as storeMessage } from '@/actions/App/Http/Controllers/IncidentMessageController';
 import { update as updateRouting } from '@/actions/App/Http/Controllers/IncidentRoutingController';
-import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -356,10 +355,22 @@ export default function IncidentShow({
 
             <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <Heading
-                        title={incident.incident_number}
-                        description={`${incident.incident_type} · ${incident.subcategory}`}
-                    />
+                    <header className="mb-8 space-y-1">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <h1 className="text-xl font-semibold tracking-tight">
+                                {incident.incident_number}
+                            </h1>
+                            <Badge
+                                variant="outline"
+                                className={`rounded-lg px-3 py-1.5 text-sm font-semibold [&>svg]:size-4 ${appearance.className}`}
+                            >
+                                <StatusIcon /> {incident.status_label}
+                            </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                            {incident.incident_type} · {incident.subcategory}
+                        </p>
+                    </header>
                     <Button variant="outline" asChild>
                         <Link href={incidentsIndex()}>
                             <ArrowLeft /> Back to incidents

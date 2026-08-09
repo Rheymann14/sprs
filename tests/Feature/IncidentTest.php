@@ -886,6 +886,25 @@ test('central office administrators can route incidents to regional staff', func
         ])
         ->assertRedirect();
 
+    $this->actingAs($centralUser)
+        ->get(route('incidents.show', $incident))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('routing.can_manage', true)
+            ->where('routing.origin_region', Region::CentralOffice)
+            ->where('routing.routed_regions.0.id', $targetRegion->id)
+            ->where('routing.available_regions', function ($regions) use (
+                $centralRegion,
+                $otherRegion,
+                $targetRegion,
+            ): bool {
+                $regionIds = collect($regions)->pluck('id');
+
+                return $regionIds->contains($targetRegion->id)
+                    && $regionIds->contains($otherRegion->id)
+                    && ! $regionIds->contains($centralRegion->id);
+            })
+        );
+
     $this->actingAs($regionalUser)
         ->post(route('incidents.messages.store', $incident), ['message' => 'Regional Office response'])
         ->assertRedirect();

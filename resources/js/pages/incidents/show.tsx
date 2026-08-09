@@ -21,6 +21,7 @@ import {
 } from '@/actions/App/Http/Controllers/IncidentController';
 import { store as storeMessage } from '@/actions/App/Http/Controllers/IncidentMessageController';
 import { update as updateRouting } from '@/actions/App/Http/Controllers/IncidentRoutingController';
+import { SearchableMultiCommand } from '@/components/searchable-command';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,7 +31,6 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogContent,
@@ -332,15 +332,6 @@ export default function IncidentShow({
         });
     };
 
-    const toggleRoutedRegion = (regionId: string, checked: boolean) => {
-        routingForm.setData(
-            'region_ids',
-            checked
-                ? [...routingForm.data.region_ids, regionId]
-                : routingForm.data.region_ids.filter((id) => id !== regionId),
-        );
-    };
-
     const saveRouting = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         routingForm.put(updateRouting.url(incident.id), {
@@ -484,29 +475,26 @@ export default function IncidentShow({
                                         reply while the conversation is open.
                                     </p>
                                 </div>
-                                <div className="grid gap-2 sm:grid-cols-2">
-                                    {routing.available_regions.map((region) => (
-                                        <label
-                                            key={region.id}
-                                            className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition hover:bg-accent/50"
-                                        >
-                                            <Checkbox
-                                                checked={routingForm.data.region_ids.includes(
-                                                    region.id,
-                                                )}
-                                                onCheckedChange={(checked) =>
-                                                    toggleRoutedRegion(
-                                                        region.id,
-                                                        checked === true,
-                                                    )
-                                                }
-                                            />
-                                            <span className="text-sm font-medium">
-                                                {region.name}
-                                            </span>
-                                        </label>
-                                    ))}
-                                </div>
+                                <SearchableMultiCommand
+                                    value={routingForm.data.region_ids}
+                                    options={routing.available_regions.map(
+                                        (region) => ({
+                                            value: region.id,
+                                            label: region.name,
+                                        }),
+                                    )}
+                                    placeholder="Select CHED offices"
+                                    searchPlaceholder="Search CHED offices..."
+                                    emptyMessage="No CHED offices found."
+                                    selectedLabel="offices selected"
+                                    disabled={routingForm.processing}
+                                    onValueChange={(regionIds) =>
+                                        routingForm.setData(
+                                            'region_ids',
+                                            regionIds,
+                                        )
+                                    }
+                                />
                                 {routingForm.errors.region_ids && (
                                     <p className="text-sm text-destructive">
                                         {routingForm.errors.region_ids}

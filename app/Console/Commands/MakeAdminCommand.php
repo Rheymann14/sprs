@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Region;
 use App\Models\User;
 use App\Models\UserRole;
 use Illuminate\Console\Attributes\Description;
@@ -15,7 +16,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
 #[Signature('make:admin')]
-#[Description('Create an administrator account')]
+#[Description('Create a super administrator account')]
 class MakeAdminCommand extends Command
 {
     /**
@@ -46,20 +47,23 @@ class MakeAdminCommand extends Command
         $validated = $validator->validated();
 
         DB::transaction(function () use ($validated): void {
-            $administratorRole = UserRole::query()->firstOrCreate([
-                'name' => UserRole::Administrator,
+            $superAdministratorRole = UserRole::query()->firstOrCreate([
+                'name' => UserRole::SuperAdmin,
+            ]);
+            $centralOfficeRegion = Region::query()->firstOrCreate([
+                'name' => Region::CentralOffice,
             ]);
 
             User::query()->create([
                 'name' => Str::squish($validated['name']),
                 'email' => Str::lower($validated['email']),
                 'password' => Hash::make($validated['password']),
-                'user_role_id' => $administratorRole->id,
+                'user_role_id' => $superAdministratorRole->id,
+                'region_id' => $centralOfficeRegion->id,
             ]);
-
         });
 
-        $this->info('Administrator created successfully.');
+        $this->info('Super administrator created successfully.');
 
         return self::SUCCESS;
     }

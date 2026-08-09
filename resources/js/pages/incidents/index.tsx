@@ -64,6 +64,12 @@ type IncidentsProps = {
     incidents: PaginatedIncidents;
     filters: {
         search: string;
+        year: number | null;
+        incident_type_id: string;
+        incident_type: string | null;
+        subcategory_id: string;
+        subcategory: string | null;
+        status: string;
     };
 };
 
@@ -102,12 +108,27 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
         null,
     );
     const deletionForm = useForm({});
+    const statisticsFilters = {
+        year: filters.year ?? undefined,
+        incident_type_id: filters.incident_type_id || undefined,
+        subcategory_id: filters.subcategory_id || undefined,
+        status: filters.status || undefined,
+    };
+    const hasStatisticsFilters = Boolean(
+        filters.year ||
+        filters.incident_type_id ||
+        filters.subcategory_id ||
+        filters.status,
+    );
 
     const searchIncidents = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         router.get(
             incidentsIndex.url({
-                query: { search: searchQuery.trim() || undefined },
+                query: {
+                    ...statisticsFilters,
+                    search: searchQuery.trim() || undefined,
+                },
             }),
             {},
             {
@@ -122,7 +143,7 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
     const clearSearch = () => {
         setSearchQuery('');
         router.get(
-            incidentsIndex.url(),
+            incidentsIndex.url({ query: statisticsFilters }),
             {},
             {
                 only: ['incidents', 'filters'],
@@ -174,6 +195,48 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
                                 Incident types, subcategories, and current
                                 status.
                             </CardDescription>
+                            {hasStatisticsFilters && (
+                                <div className="flex flex-wrap items-center gap-2 pt-1">
+                                    {filters.year && (
+                                        <Badge variant="outline">
+                                            Year: {filters.year}
+                                        </Badge>
+                                    )}
+                                    {filters.incident_type && (
+                                        <Badge variant="outline">
+                                            Incident: {filters.incident_type}
+                                        </Badge>
+                                    )}
+                                    {filters.subcategory && (
+                                        <Badge variant="outline">
+                                            Subcategory: {filters.subcategory}
+                                        </Badge>
+                                    )}
+                                    {filters.status && (
+                                        <Badge variant="outline">
+                                            Status: {filters.status}
+                                        </Badge>
+                                    )}
+                                    <Button
+                                        asChild
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 px-2"
+                                    >
+                                        <Link
+                                            href={incidentsIndex({
+                                                query: {
+                                                    search:
+                                                        filters.search ||
+                                                        undefined,
+                                                },
+                                            })}
+                                        >
+                                            Clear report filters
+                                        </Link>
+                                    </Button>
+                                </div>
+                            )}
                         </div>
                         <form
                             className="flex w-full flex-wrap gap-2 sm:w-auto"
@@ -367,6 +430,7 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
                                                 <Link
                                                     href={incidentsIndex({
                                                         query: {
+                                                            ...statisticsFilters,
                                                             search:
                                                                 filters.search ||
                                                                 undefined,
@@ -410,6 +474,7 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
                                                 <Link
                                                     href={incidentsIndex({
                                                         query: {
+                                                            ...statisticsFilters,
                                                             search:
                                                                 filters.search ||
                                                                 undefined,
@@ -448,14 +513,16 @@ export default function Incidents({ incidents, filters }: IncidentsProps) {
                                 </div>
                                 <div>
                                     <p className="font-medium">
-                                        {filters.search
+                                        {filters.search || hasStatisticsFilters
                                             ? 'No incidents found'
                                             : 'No incidents yet'}
                                     </p>
                                     <p className="mt-1 text-sm text-muted-foreground">
                                         {filters.search
                                             ? 'Try a different incident number, title, subcategory, or status.'
-                                            : 'Incidents reported in your region will appear here.'}
+                                            : hasStatisticsFilters
+                                              ? 'No incidents match the selected statistics filters.'
+                                              : 'Incidents reported in your region will appear here.'}
                                     </p>
                                 </div>
                             </div>

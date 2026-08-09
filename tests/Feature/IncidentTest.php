@@ -94,6 +94,55 @@ test('incidents can be searched and paginated', function () {
         );
 });
 
+test('incidents can be filtered from a statistics count card', function () {
+    $region = Region::factory()->create();
+    $user = User::factory()->for($region)->create();
+    $type = IncidentType::factory()->create(['name' => 'Child Protection']);
+    $otherType = IncidentType::factory()->create(['name' => 'Other']);
+    $subcategory = IncidentSubcategory::factory()->for($type)->create([
+        'name' => 'Bullying',
+    ]);
+    $otherSubcategory = IncidentSubcategory::factory()->for($otherType)->create();
+
+    $matchingIncident = Incident::factory()
+        ->for($region)
+        ->for($subcategory, 'subcategory')
+        ->create([
+            'status' => 'Closed',
+            'created_at' => '2025-05-01 08:00:00',
+        ]);
+    Incident::factory()->for($region)->for($subcategory, 'subcategory')->create([
+        'status' => 'Monitoring',
+        'created_at' => '2025-05-01 08:00:00',
+    ]);
+    Incident::factory()->for($region)->for($subcategory, 'subcategory')->create([
+        'status' => 'Closed',
+        'created_at' => '2024-05-01 08:00:00',
+    ]);
+    Incident::factory()->for($region)->for($otherSubcategory, 'subcategory')->create([
+        'status' => 'Closed',
+        'created_at' => '2025-05-01 08:00:00',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('incidents.index', [
+            'year' => 2025,
+            'incident_type_id' => $type->id,
+            'subcategory_id' => $subcategory->id,
+            'status' => 'Closed',
+        ]))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('incidents.total', 1)
+            ->where('incidents.data.0.id', $matchingIncident->id)
+            ->where('filters.year', 2025)
+            ->where('filters.incident_type_id', $type->id)
+            ->where('filters.incident_type', 'Child Protection')
+            ->where('filters.subcategory_id', $subcategory->id)
+            ->where('filters.subcategory', 'Bullying')
+            ->where('filters.status', 'Closed')
+        );
+});
+
 test('incident numbers use the creation year type and a four character suffix', function () {
     $this->travelTo('2026-08-07 12:00:00');
     $type = IncidentType::factory()->create(['name' => 'Hazing']);

@@ -9,6 +9,7 @@ use App\Http\Requests\UpdateIncidentRequest;
 use App\Models\Incident;
 use App\Models\IncidentForm;
 use App\Models\IncidentStatus;
+use App\Models\IncidentSubcategory;
 use App\Models\IncidentType;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -25,6 +26,19 @@ class IncidentController extends Controller
     public function index(Request $request): Response
     {
         $search = $request->string('search')->trim()->toString();
+        $year = $request->integer('year');
+        $year = $year >= 1000 && $year <= 9999 ? $year : null;
+        $incidentTypeId = $request->string('incident_type_id')->trim()->toString();
+        $subcategoryId = $request->string('subcategory_id')->trim()->toString();
+        $status = $request->string('status')->trim()->toString();
+        $selectedIncidentType = $incidentTypeId === ''
+            ? null
+            : IncidentType::query()->select('id', 'name')->find($incidentTypeId);
+        $selectedSubcategory = $subcategoryId === ''
+            ? null
+            : IncidentSubcategory::query()
+                ->select('id', 'incident_type_id', 'name')
+                ->find($subcategoryId);
 
         return Inertia::render('incidents/index', [
             'incidents' => Incident::query()
@@ -35,6 +49,17 @@ class IncidentController extends Controller
                     'subcategory.incidentType:id,name',
                     'subcategory.statuses:id,incident_subcategory_id,name,icon,sort_order',
                 ])
+                ->when($year !== null, fn (Builder $query) => $query->whereYear('created_at', $year))
+                ->when($incidentTypeId !== '', function (Builder $query) use ($incidentTypeId): void {
+                    $query->whereIn(
+                        'incident_subcategory_id',
+                        IncidentSubcategory::query()
+                            ->select('id')
+                            ->where('incident_type_id', $incidentTypeId),
+                    );
+                })
+                ->when($subcategoryId !== '', fn (Builder $query) => $query->where('incident_subcategory_id', $subcategoryId))
+                ->when($status !== '', fn (Builder $query) => $query->whereRaw('LOWER(status) = ?', [Str::lower($status)]))
                 ->when($search !== '', function (Builder $query) use ($search): void {
                     $query->where(function (Builder $searchQuery) use ($search): void {
                         $searchQuery
@@ -79,6 +104,12 @@ class IncidentController extends Controller
                 }),
             'filters' => [
                 'search' => $search,
+                'year' => $year,
+                'incident_type_id' => $incidentTypeId,
+                'incident_type' => $selectedIncidentType?->name,
+                'subcategory_id' => $subcategoryId,
+                'subcategory' => $selectedSubcategory?->name,
+                'status' => $status,
             ],
         ]);
     }

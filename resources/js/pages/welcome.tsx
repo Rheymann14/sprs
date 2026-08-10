@@ -45,11 +45,16 @@ export default function Welcome() {
 
                 <div className="relative z-10 flex min-h-0 flex-1 items-center justify-center py-8 sm:py-12 lg:py-16">
                     <section className="flex w-full max-w-4xl flex-col items-center gap-4 text-center sm:gap-5 lg:gap-6">
-                        <div className="relative size-24 overflow-hidden rounded-[1.4rem] bg-[#08285c] shadow-[0_18px_45px_-18px_rgba(7,26,64,0.65)] ring-1 ring-[#173c77]/10 sm:size-28 sm:rounded-[1.6rem] lg:size-32 dark:shadow-[0_18px_45px_-18px_rgba(74,121,207,0.7)] dark:ring-white/15">
+                        <div className="flex items-center justify-center gap-5 sm:gap-6">
                             <img
-                                src="/sprs.png"
-                                alt="Student Incident Reporting System logo"
-                                className="size-full scale-[1.16] object-cover"
+                                src="/ched.png"
+                                alt="Commission on Higher Education logo"
+                                className="size-20 object-contain sm:size-24"
+                            />
+                            <img
+                                src="/achieve.png"
+                                alt="ACHIEVE logo"
+                                className="size-20 scale-150 object-contain sm:size-24"
                             />
                         </div>
 

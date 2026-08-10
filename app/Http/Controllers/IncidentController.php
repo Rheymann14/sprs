@@ -224,6 +224,9 @@ class IncidentController extends Controller
                 'has_earlier_messages' => $hasEarlierMessages,
                 'message_limit' => $messageLimit,
             ],
+            'attachment_groups' => Inertia::defer(
+                fn (): array => $this->attachmentGroupsForIncident($incident, $request->user()->id),
+            ),
             'routing' => [
                 'origin_region' => $incident->region->name,
                 'can_manage' => $canManageRouting,
@@ -246,6 +249,38 @@ class IncidentController extends Controller
                     : [],
             ],
         ]);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function attachmentGroupsForIncident(Incident $incident, int $viewerId): array
+    {
+        return $incident->messages()
+            ->select('id', 'incident_id', 'user_id', 'created_at')
+            ->whereHas('attachments')
+            ->with([
+                'user:id,name,user_role_id',
+                'user.userRole:id,organization_group',
+                'attachments:id,incident_message_id,original_name,path,mime_type,size',
+            ])
+            ->latest()
+            ->get()
+            ->map(fn ($message): array => [
+                'id' => $message->id,
+                'sender_name' => $message->user->name,
+                'sender_label' => $message->user->userRole?->organization_group === UserRoleGroup::CentralOffice
+                    ? 'CHED CO'
+                    : 'CHED RO',
+                'is_own' => $message->user_id === $viewerId,
+                'created_at' => $message->created_at?->toIso8601String(),
+                'attachments' => $message->attachments->map(fn ($attachment): array => [
+                    'id' => $attachment->id,
+                    'name' => $attachment->original_name,
+                    'url' => Storage::disk('public')->url($attachment->path),
+                    'mime_type' => $attachment->mime_type,
+                    'size' => $attachment->size,
+                ])->all(),
+            ])
+            ->all();
     }
 
     public function edit(Request $request, Incident $incident): Response

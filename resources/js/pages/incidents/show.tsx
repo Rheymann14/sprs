@@ -1,4 +1,4 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Deferred, Head, Link, useForm } from '@inertiajs/react';
 import {
     ArrowLeft,
     Building2,
@@ -97,6 +97,15 @@ type Conversation = {
     message_limit: number;
 };
 
+type AttachmentGroup = {
+    id: string;
+    sender_name: string;
+    sender_label: 'CHED CO' | 'CHED RO';
+    is_own: boolean;
+    created_at: string;
+    attachments: Attachment[];
+};
+
 type Routing = {
     origin_region: string;
     can_manage: boolean;
@@ -141,16 +150,18 @@ function fileSize(size?: number) {
 function AttachmentThumbnail({
     attachment,
     onOpen,
+    fluid = false,
 }: {
     attachment: Attachment;
     onOpen: (attachment: Attachment) => void;
+    fluid?: boolean;
 }) {
     const isImage = attachment.mime_type.startsWith('image/');
 
     return (
         <button
             type="button"
-            className="group flex max-w-48 min-w-0 items-center gap-2 rounded-lg border bg-background/80 p-2 text-left shadow-xs transition hover:bg-accent"
+            className={`group min-w-0 items-center gap-2 rounded-lg border bg-background/80 p-2 text-left shadow-xs transition hover:bg-accent ${fluid ? 'grid w-44 shrink-0 grid-cols-[2.5rem_minmax(0,1fr)]' : 'flex max-w-48'}`}
             onClick={() => onOpen(attachment)}
         >
             {isImage ? (
@@ -178,6 +189,109 @@ function AttachmentThumbnail({
                 )}
             </span>
         </button>
+    );
+}
+
+function AttachmentGallery({
+    groups,
+    onOpen,
+}: {
+    groups: AttachmentGroup[];
+    onOpen: (attachment: Attachment) => void;
+}) {
+    const [showAll, setShowAll] = useState(false);
+    const attachmentCount = groups.reduce(
+        (total, group) => total + group.attachments.length,
+        0,
+    );
+    const visibleAttachmentIds = new Set(
+        groups
+            .flatMap((group) => group.attachments)
+            .slice(0, showAll ? attachmentCount : 4)
+            .map((attachment) => attachment.id),
+    );
+    const visibleGroups = groups
+        .map((group) => ({
+            ...group,
+            attachments: group.attachments.filter((attachment) =>
+                visibleAttachmentIds.has(attachment.id),
+            ),
+        }))
+        .filter((group) => group.attachments.length > 0);
+
+    if (attachmentCount === 0) {
+        return (
+            <div className="rounded-lg border border-dashed px-4 py-4 text-center text-sm text-muted-foreground">
+                No files have been attached to this conversation yet.
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex min-w-0 items-center gap-2">
+            <div className="min-w-0 flex-1 overflow-x-auto pb-1">
+                <div className="flex w-max gap-2">
+                    {visibleGroups.map((group) => (
+                        <section
+                            key={group.id}
+                            className="flex shrink-0 items-center gap-2 rounded-lg border bg-muted/20 p-2"
+                        >
+                            <div className="w-36 shrink-0 border-r pr-2 text-xs">
+                                <div className="flex min-w-0 items-center gap-1">
+                                    <span className="shrink-0 font-semibold">
+                                        {group.sender_label}
+                                    </span>
+                                    <span className="truncate text-muted-foreground">
+                                        {group.sender_name}
+                                        {group.is_own ? ' (You)' : ''}
+                                    </span>
+                                </div>
+                                <time className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                                    {new Date(
+                                        group.created_at,
+                                    ).toLocaleString()}
+                                </time>
+                            </div>
+                            <div className="flex gap-2">
+                                {group.attachments.map((attachment) => (
+                                    <AttachmentThumbnail
+                                        key={attachment.id}
+                                        attachment={attachment}
+                                        onOpen={onOpen}
+                                        fluid
+                                    />
+                                ))}
+                            </div>
+                        </section>
+                    ))}
+                </div>
+            </div>
+
+            {attachmentCount > 4 && (
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0"
+                    onClick={() => setShowAll((current) => !current)}
+                >
+                    {showAll ? 'Show less' : `+${attachmentCount - 4} more`}
+                </Button>
+            )}
+        </div>
+    );
+}
+
+function AttachmentGallerySkeleton() {
+    return (
+        <div className="flex animate-pulse gap-2 overflow-hidden">
+            {Array.from({ length: 4 }, (_, index) => (
+                <div
+                    key={index}
+                    className="h-14 w-44 shrink-0 rounded-lg border bg-muted/50"
+                />
+            ))}
+        </div>
     );
 }
 
@@ -265,10 +379,12 @@ export default function IncidentShow({
     incident,
     conversation,
     routing,
+    attachment_groups,
 }: {
     incident: Incident;
     conversation: Conversation;
     routing: Routing;
+    attachment_groups?: AttachmentGroup[];
 }) {
     const [viewingAttachment, setViewingAttachment] =
         useState<Attachment | null>(null);
@@ -313,7 +429,7 @@ export default function IncidentShow({
         }
 
         messageForm.post(storeMessage.url(incident.id), {
-            only: ['conversation'],
+            only: ['conversation', 'attachment_groups'],
             preserveScroll: true,
             onSuccess: () => messageForm.reset(),
         });
@@ -852,6 +968,29 @@ export default function IncidentShow({
                                 administrators can change this status.
                             </p>
                         )}
+                    </CardContent>
+                </Card>
+
+                <Card className="gap-3 py-4">
+                    <CardHeader className="gap-1 px-4 sm:px-5">
+                        <CardTitle className="text-sm">
+                            Conversation files
+                        </CardTitle>
+                        <CardDescription className="text-xs">
+                            All files shared in this incident, grouped by sender
+                            and sent date and time.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="px-4 sm:px-5">
+                        <Deferred
+                            data="attachment_groups"
+                            fallback={<AttachmentGallerySkeleton />}
+                        >
+                            <AttachmentGallery
+                                groups={attachment_groups ?? []}
+                                onOpen={setViewingAttachment}
+                            />
+                        </Deferred>
                     </CardContent>
                 </Card>
             </div>

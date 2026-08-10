@@ -13,7 +13,7 @@ export default function Welcome() {
 
     return (
         <>
-            <Head title="Student Protection Reporting System" />
+            <Head title="Student Incident Reporting System" />
 
             <main className="relative isolate flex h-dvh min-h-0 flex-col overflow-hidden bg-[#f8faff] px-4 text-[#151a27] transition-colors sm:px-6 dark:bg-[#07111f] dark:text-[#f3f6ff]">
                 <div
@@ -48,7 +48,7 @@ export default function Welcome() {
                         <div className="relative size-24 overflow-hidden rounded-[1.4rem] bg-[#08285c] shadow-[0_18px_45px_-18px_rgba(7,26,64,0.65)] ring-1 ring-[#173c77]/10 sm:size-28 sm:rounded-[1.6rem] lg:size-32 dark:shadow-[0_18px_45px_-18px_rgba(74,121,207,0.7)] dark:ring-white/15">
                             <img
                                 src="/sprs.png"
-                                alt="Student Protection Reporting System logo"
+                                alt="Student Incident Reporting System logo"
                                 className="size-full scale-[1.16] object-cover"
                             />
                         </div>
@@ -59,7 +59,7 @@ export default function Welcome() {
 
                         <div className="flex w-full flex-col items-center gap-3 sm:gap-4">
                             <h1 className="max-w-3xl text-[2rem] leading-[1.08] font-bold tracking-[-0.04em] text-balance sm:text-5xl lg:text-6xl">
-                                Student Protection
+                                Student Incident
                                 <span className="block">Reporting System</span>
                             </h1>
                             <p className="max-w-lg text-sm leading-6 text-pretty text-[#40506f] sm:text-base sm:leading-7 lg:max-w-xl lg:text-lg dark:text-[#b7c4dc]">

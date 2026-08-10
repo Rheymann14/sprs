@@ -7,6 +7,7 @@ test('welcome page can be rendered', function () {
 
     $response->assertSuccessful()
         ->assertSee("const appearance = 'light';", false)
+        ->assertSee('<title>Student Incident Reporting System</title>', false)
         ->assertInertia(fn (Assert $page) => $page->component('welcome'));
 });
 

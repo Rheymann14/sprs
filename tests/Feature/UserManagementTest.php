@@ -323,6 +323,33 @@ test('user managers can create a regionally assigned user', function () {
         ->and($user->password)->not->toBe('chedsprs2026');
 });
 
+test('office and super administrators can create users', function (string $managerRole, string $assignedRole) {
+    $region = $managerRole === UserRole::RegionalOfficeAdministrator
+        ? Region::factory()->create()
+        : Region::query()->firstOrCreate(['name' => Region::CentralOffice]);
+    $email = "{$managerRole}@example.com";
+
+    $this->actingAs(userManager($managerRole, $region))
+        ->post(route('user-management.store'), [
+            'name' => 'New Office User',
+            'email' => $email,
+            'password' => 'chedsprs2026',
+            'user_role' => $assignedRole,
+            'region_id' => $region->id,
+        ])
+        ->assertRedirect(route('user-management.index'))
+        ->assertSessionHasNoErrors()
+        ->assertInertiaFlash('toast.message', 'User created.');
+
+    expect(User::query()->where('email', $email)->first())
+        ->not->toBeNull()
+        ->userRole->name->toBe($assignedRole);
+})->with([
+    'RO administrator' => [UserRole::RegionalOfficeAdministrator, UserRole::RegionalOfficeStaff],
+    'CO administrator' => [UserRole::CentralOfficeAdministrator, UserRole::CentralOfficeStaff],
+    'Super Admin' => [UserRole::SuperAdmin, UserRole::CentralOfficeStaff],
+]);
+
 test('user creation validates unique email role and region', function () {
     $existingUser = User::factory()->create();
 

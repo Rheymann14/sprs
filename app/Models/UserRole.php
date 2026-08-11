@@ -99,10 +99,13 @@ class UserRole extends Model
 
     public static function groupForName(string $name): UserRoleGroup
     {
-        $storedGroup = self::query()->where('name', $name)->value('organization_group');
+        $storedGroup = self::query()
+            ->where('name', $name)
+            ->first(['organization_group'])
+            ?->organization_group;
 
         return $storedGroup !== null
-            ? UserRoleGroup::from($storedGroup)
+            ? $storedGroup
             : UserRoleGroup::from(self::metadataForName($name)['organization_group']);
     }
 

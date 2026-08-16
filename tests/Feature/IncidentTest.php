@@ -617,6 +617,10 @@ test('incident conversation files include attachments outside the bounded messag
     $region = Region::factory()->create();
     $viewer = incidentUser($region);
     $responder = incidentUser($region, UserRole::CentralOfficeStaff);
+    $agencyUser = incidentUser($region, UserRole::Agency);
+    $attachmentType = AttachmentType::factory()->for($region)->create([
+        'name' => 'Supporting document',
+    ]);
     $incident = Incident::factory()->for($region)->create(['status' => 'Pending']);
     $oldMessage = IncidentMessage::factory()
         ->for($incident)
@@ -646,19 +650,33 @@ test('incident conversation files include attachments outside the bounded messag
         ->for($latestMessage, 'message')
         ->create(['original_name' => 'response.pdf']);
 
+    $agencyMessage = IncidentMessage::factory()
+        ->for($incident)
+        ->for($agencyUser)
+        ->create(['created_at' => now()->addMinutes(2)]);
+
+    IncidentMessageAttachment::factory()
+        ->for($agencyMessage, 'message')
+        ->for($attachmentType, 'attachmentType')
+        ->create(['original_name' => 'agency-response.pdf']);
+
     $this->actingAs($viewer)
         ->get(route('incidents.show', $incident))
         ->assertInertia(fn (Assert $page) => $page
             ->has('conversation.messages', 30)
             ->missing('attachment_groups')
             ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->has('attachment_groups', 2)
-                ->where('attachment_groups.0.sender_label', 'CHED CO')
-                ->where('attachment_groups.0.sender_name', $responder->name)
-                ->where('attachment_groups.0.attachments.0.name', 'response.pdf')
-                ->has('attachment_groups.1.attachments', 5)
-                ->where('attachment_groups.1.is_own', true)
-                ->where('attachment_groups.1.attachments.0.name', 'evidence-0.pdf')
+                ->has('attachment_groups', 3)
+                ->where('attachment_groups.0.sender_label', 'Agency')
+                ->where('attachment_groups.0.sender_name', $agencyUser->name)
+                ->where('attachment_groups.0.attachments.0.name', 'agency-response.pdf')
+                ->where('attachment_groups.0.attachments.0.type_name', 'Supporting document')
+                ->where('attachment_groups.1.sender_label', 'CHED CO')
+                ->where('attachment_groups.1.sender_name', $responder->name)
+                ->where('attachment_groups.1.attachments.0.name', 'response.pdf')
+                ->has('attachment_groups.2.attachments', 5)
+                ->where('attachment_groups.2.is_own', true)
+                ->where('attachment_groups.2.attachments.0.name', 'evidence-0.pdf')
             )
         );
 });

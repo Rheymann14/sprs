@@ -284,9 +284,11 @@ class IncidentController extends Controller
             ->map(fn ($message): array => [
                 'id' => $message->id,
                 'sender_name' => $message->user->name,
-                'sender_label' => $message->user->userRole?->organization_group === UserRoleGroup::CentralOffice
-                    ? 'CHED CO'
-                    : 'CHED RO',
+                'sender_label' => match ($message->user->userRole?->organization_group) {
+                    UserRoleGroup::CentralOffice => 'CHED CO',
+                    UserRoleGroup::Agency => 'Agency',
+                    default => 'CHED RO',
+                },
                 'is_own' => $message->user_id === $viewerId,
                 'created_at' => $message->created_at?->toIso8601String(),
                 'attachments' => $message->attachments->map(fn ($attachment): array => [

@@ -2,6 +2,8 @@ import { Deferred, Head, Link, useForm } from '@inertiajs/react';
 import {
     ArrowLeft,
     Building2,
+    ChevronLeft,
+    ChevronRight,
     CircleAlert,
     CircleCheck,
     Clock3,
@@ -10,6 +12,7 @@ import {
     Paperclip,
     Pencil,
     Plus,
+    Search,
     Send,
     Trash2,
     Waypoints,
@@ -115,7 +118,7 @@ type Conversation = {
 type AttachmentGroup = {
     id: string;
     sender_name: string;
-    sender_label: 'CHED CO' | 'CHED RO';
+    sender_label: 'CHED CO' | 'CHED RO' | 'Agency';
     is_own: boolean;
     created_at: string;
     attachments: Attachment[];
@@ -224,27 +227,42 @@ function AttachmentGallery({
     groups: AttachmentGroup[];
     onOpen: (attachment: Attachment) => void;
 }) {
-    const [showAll, setShowAll] = useState(false);
-    const attachmentCount = groups.reduce(
-        (total, group) => total + group.attachments.length,
-        0,
+    const pageSize = 4;
+    const [searchQuery, setSearchQuery] = useState('');
+    const [requestedPage, setRequestedPage] = useState(1);
+    const attachmentRows = groups.flatMap((group) =>
+        group.attachments.map((attachment) => ({
+            attachment,
+            group,
+        })),
     );
-    const visibleAttachmentIds = new Set(
-        groups
-            .flatMap((group) => group.attachments)
-            .slice(0, showAll ? attachmentCount : 4)
-            .map((attachment) => attachment.id),
-    );
-    const visibleGroups = groups
-        .map((group) => ({
-            ...group,
-            attachments: group.attachments.filter((attachment) =>
-                visibleAttachmentIds.has(attachment.id),
-            ),
-        }))
-        .filter((group) => group.attachments.length > 0);
+    const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase();
+    const filteredRows = attachmentRows.filter(({ attachment, group }) => {
+        if (normalizedSearchQuery === '') {
+            return true;
+        }
 
-    if (attachmentCount === 0) {
+        const searchableText = [
+            group.sender_label,
+            group.sender_name,
+            attachment.name,
+            attachment.type_name ?? 'Uncategorized',
+            new Date(group.created_at).toLocaleString(),
+        ]
+            .join(' ')
+            .toLocaleLowerCase();
+
+        return searchableText.includes(normalizedSearchQuery);
+    });
+    const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+    const currentPage = Math.min(requestedPage, totalPages);
+    const firstVisibleRow = (currentPage - 1) * pageSize;
+    const visibleRows = filteredRows.slice(
+        firstVisibleRow,
+        firstVisibleRow + pageSize,
+    );
+
+    if (attachmentRows.length === 0) {
         return (
             <div className="rounded-lg border border-dashed px-4 py-4 text-center text-sm text-muted-foreground">
                 No files have been attached to this conversation yet.
@@ -253,69 +271,168 @@ function AttachmentGallery({
     }
 
     return (
-        <div className="flex min-w-0 items-center gap-2">
-            <div className="min-w-0 flex-1 overflow-x-auto pb-1">
-                <div className="flex w-max gap-2">
-                    {visibleGroups.map((group) => (
-                        <section
-                            key={group.id}
-                            className="flex shrink-0 items-center gap-2 rounded-lg border bg-muted/20 p-2"
-                        >
-                            <div className="w-36 shrink-0 border-r pr-2 text-xs">
-                                <div className="flex min-w-0 items-center gap-1">
-                                    <span className="shrink-0 font-semibold">
-                                        {group.sender_label}
-                                    </span>
-                                    <span className="truncate text-muted-foreground">
-                                        {group.sender_name}
-                                        {group.is_own ? ' (You)' : ''}
-                                    </span>
-                                </div>
-                                <time className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                                    {new Date(
-                                        group.created_at,
-                                    ).toLocaleString()}
-                                </time>
-                            </div>
-                            <div className="flex gap-2">
-                                {group.attachments.map((attachment) => (
-                                    <AttachmentThumbnail
-                                        key={attachment.id}
-                                        attachment={attachment}
-                                        onOpen={onOpen}
-                                        fluid
-                                    />
-                                ))}
-                            </div>
-                        </section>
-                    ))}
-                </div>
+        <div className="space-y-4">
+            <div className="relative sm:max-w-sm">
+                <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                    type="search"
+                    value={searchQuery}
+                    aria-label="Search conversation files"
+                    placeholder="Search files, types, or uploaders"
+                    className="pl-9"
+                    onChange={(event) => {
+                        setSearchQuery(event.target.value);
+                        setRequestedPage(1);
+                    }}
+                />
             </div>
 
-            {attachmentCount > 4 && (
-                <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="shrink-0"
-                    onClick={() => setShowAll((current) => !current)}
-                >
-                    {showAll ? 'Show less' : `+${attachmentCount - 4} more`}
-                </Button>
-            )}
+            <div className="overflow-x-auto rounded-xl border">
+                <table className="w-full min-w-3xl text-sm">
+                    <thead className="border-b bg-muted/50 text-left text-xs tracking-wide text-muted-foreground uppercase">
+                        <tr>
+                            <th className="w-1/5 px-4 py-3 font-medium">
+                                Uploaded By
+                            </th>
+                            <th className="w-2/5 px-4 py-3 font-medium">
+                                Document File Name
+                            </th>
+                            <th className="w-1/5 px-4 py-3 font-medium">
+                                File Type
+                            </th>
+                            <th className="w-1/5 px-4 py-3 font-medium">
+                                Date Uploaded
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                        {visibleRows.map(({ attachment, group }) => (
+                            <tr
+                                key={`${group.id}-${attachment.id}`}
+                                className="transition-colors hover:bg-muted/40"
+                            >
+                                <td className="px-4 py-3 align-middle">
+                                    <p className="font-semibold">
+                                        {group.sender_label}
+                                    </p>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">
+                                        {group.sender_name}
+                                        {group.is_own ? ' (You)' : ''}
+                                    </p>
+                                </td>
+                                <td className="px-4 py-3 align-middle">
+                                    <button
+                                        type="button"
+                                        className="group flex max-w-full items-center gap-3 text-left"
+                                        onClick={() => onOpen(attachment)}
+                                    >
+                                        {attachment.mime_type.startsWith(
+                                            'image/',
+                                        ) ? (
+                                            <img
+                                                src={attachment.url}
+                                                alt=""
+                                                className="size-10 shrink-0 rounded-md object-cover"
+                                                loading="lazy"
+                                                decoding="async"
+                                                fetchPriority="low"
+                                            />
+                                        ) : (
+                                            <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted">
+                                                <FileText className="size-5 text-muted-foreground" />
+                                            </span>
+                                        )}
+                                        <span className="min-w-0">
+                                            <span className="block truncate font-medium text-primary underline-offset-4 group-hover:underline">
+                                                {attachment.name}
+                                            </span>
+                                            <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                                                {fileSize(attachment.size)}
+                                            </span>
+                                        </span>
+                                    </button>
+                                </td>
+                                <td className="px-4 py-3 align-middle text-muted-foreground">
+                                    {attachment.type_name ?? 'Uncategorized'}
+                                </td>
+                                <td className="px-4 py-3 align-middle whitespace-nowrap text-muted-foreground">
+                                    <time dateTime={group.created_at}>
+                                        {new Date(
+                                            group.created_at,
+                                        ).toLocaleString()}
+                                    </time>
+                                </td>
+                            </tr>
+                        ))}
+                        {visibleRows.length === 0 && (
+                            <tr>
+                                <td
+                                    colSpan={4}
+                                    className="px-4 py-8 text-center text-muted-foreground"
+                                >
+                                    No conversation files match your search.
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
+            <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-center sm:text-left">
+                    {filteredRows.length > 0
+                        ? `Showing ${firstVisibleRow + 1}\u2013${Math.min(firstVisibleRow + pageSize, filteredRows.length)} of ${filteredRows.length}`
+                        : 'Showing 0 files'}
+                </p>
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:flex">
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="w-full sm:w-auto"
+                        disabled={currentPage === 1}
+                        onClick={() =>
+                            setRequestedPage((page) => Math.max(1, page - 1))
+                        }
+                    >
+                        <ChevronLeft /> Previous
+                    </Button>
+                    <span className="px-1 text-center whitespace-nowrap sm:px-2">
+                        Page {currentPage} of {totalPages}
+                    </span>
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="w-full sm:w-auto"
+                        disabled={currentPage === totalPages}
+                        onClick={() =>
+                            setRequestedPage((page) =>
+                                Math.min(totalPages, page + 1),
+                            )
+                        }
+                    >
+                        Next <ChevronRight />
+                    </Button>
+                </div>
+            </div>
         </div>
     );
 }
 
 function AttachmentGallerySkeleton() {
     return (
-        <div className="flex animate-pulse gap-2 overflow-hidden">
-            {Array.from({ length: 4 }, (_, index) => (
-                <div
-                    key={index}
-                    className="h-14 w-44 shrink-0 rounded-lg border bg-muted/50"
-                />
-            ))}
+        <div className="animate-pulse space-y-4">
+            <div className="h-9 max-w-sm rounded-md bg-muted/50" />
+            <div className="overflow-hidden rounded-xl border">
+                <div className="h-10 border-b bg-muted/50" />
+                {Array.from({ length: 4 }, (_, index) => (
+                    <div
+                        key={index}
+                        className="h-16 border-b bg-muted/20 last:border-b-0"
+                    />
+                ))}
+            </div>
         </div>
     );
 }
@@ -1094,8 +1211,8 @@ export default function IncidentShow({
                             Conversation files
                         </CardTitle>
                         <CardDescription className="text-xs">
-                            All files shared in this incident, grouped by sender
-                            and sent date and time.
+                            Search and preview all files shared in this
+                            incident.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="px-4 sm:px-5">

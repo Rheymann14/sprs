@@ -20,6 +20,7 @@ class IncidentMessageAttachmentFactory extends Factory
     {
         return [
             'incident_message_id' => IncidentMessage::factory(),
+            'attachment_type_id' => null,
             'original_name' => fake()->word().'.pdf',
             'path' => 'incident-messages/'.fake()->uuid().'.pdf',
             'mime_type' => 'application/pdf',

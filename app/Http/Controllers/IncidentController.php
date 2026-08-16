@@ -8,6 +8,7 @@ use App\Enums\UserRoleGroup;
 use App\Http\Requests\StoreIncidentRequest;
 use App\Http\Requests\UpdateIncidentRequest;
 use App\Http\Requests\UpdateIncidentStatusRequest;
+use App\Models\AttachmentType;
 use App\Models\Incident;
 use App\Models\IncidentForm;
 use App\Models\IncidentStatus;
@@ -175,7 +176,8 @@ class IncidentController extends Controller
             ->with([
                 'user:id,name,user_role_id',
                 'user.userRole:id,organization_group',
-                'attachments:id,incident_message_id,original_name,path,mime_type,size',
+                'attachments:id,incident_message_id,attachment_type_id,original_name,path,mime_type,size',
+                'attachments.attachmentType:id,name',
             ])
             ->latest()
             ->limit($messageLimit + 1)
@@ -219,6 +221,7 @@ class IncidentController extends Controller
                         'url' => Storage::disk('public')->url($attachment->path),
                         'mime_type' => $attachment->mime_type,
                         'size' => $attachment->size,
+                        'type_name' => $attachment->attachmentType?->name,
                     ])->all(),
                 ])->all(),
                 'has_earlier_messages' => $hasEarlierMessages,
@@ -227,6 +230,19 @@ class IncidentController extends Controller
             'attachment_groups' => Inertia::defer(
                 fn (): array => $this->attachmentGroupsForIncident($incident, $request->user()->id),
             ),
+            'attachment_types' => [
+                'items' => AttachmentType::query()
+                    ->select('id', 'name')
+                    ->where('region_id', $request->user()->region_id)
+                    ->orderBy('name')
+                    ->get()
+                    ->map(fn (AttachmentType $attachmentType): array => [
+                        'id' => $attachmentType->id,
+                        'name' => $attachmentType->name,
+                    ])
+                    ->all(),
+                'can_manage' => $request->user()->can('manage-forms'),
+            ],
             'routing' => [
                 'origin_region' => $incident->region->name,
                 'can_manage' => $canManageRouting,
@@ -260,7 +276,8 @@ class IncidentController extends Controller
             ->with([
                 'user:id,name,user_role_id',
                 'user.userRole:id,organization_group',
-                'attachments:id,incident_message_id,original_name,path,mime_type,size',
+                'attachments:id,incident_message_id,attachment_type_id,original_name,path,mime_type,size',
+                'attachments.attachmentType:id,name',
             ])
             ->latest()
             ->get()
@@ -278,6 +295,7 @@ class IncidentController extends Controller
                     'url' => Storage::disk('public')->url($attachment->path),
                     'mime_type' => $attachment->mime_type,
                     'size' => $attachment->size,
+                    'type_name' => $attachment->attachmentType?->name,
                 ])->all(),
             ])
             ->all();

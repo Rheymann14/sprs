@@ -8,12 +8,20 @@ import {
     Download,
     FileText,
     Paperclip,
+    Pencil,
+    Plus,
     Send,
+    Trash2,
     Waypoints,
     X,
 } from 'lucide-react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
+import {
+    destroy as destroyAttachmentType,
+    store as storeAttachmentType,
+    update as updateAttachmentType,
+} from '@/actions/App/Http/Controllers/AttachmentTypeController';
 import {
     index as incidentsIndex,
     show as showIncident,
@@ -21,7 +29,10 @@ import {
 } from '@/actions/App/Http/Controllers/IncidentController';
 import { store as storeMessage } from '@/actions/App/Http/Controllers/IncidentMessageController';
 import { update as updateRouting } from '@/actions/App/Http/Controllers/IncidentRoutingController';
-import { SearchableMultiCommand } from '@/components/searchable-command';
+import {
+    SearchableCommand,
+    SearchableMultiCommand,
+} from '@/components/searchable-command';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -35,9 +46,12 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
+    DialogFooter,
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 
 type StatusIcon = 'circle-check' | 'clock' | 'circle-alert';
@@ -48,6 +62,7 @@ type Attachment = {
     url: string;
     mime_type: string;
     size?: number;
+    type_name?: string | null;
 };
 
 type ReportField = {
@@ -104,6 +119,11 @@ type AttachmentGroup = {
     is_own: boolean;
     created_at: string;
     attachments: Attachment[];
+};
+
+type AttachmentTypes = {
+    items: Array<{ id: string; name: string }>;
+    can_manage: boolean;
 };
 
 type Routing = {
@@ -185,6 +205,11 @@ function AttachmentThumbnail({
                 {fileSize(attachment.size) && (
                     <span className="block text-[11px] text-muted-foreground">
                         {fileSize(attachment.size)}
+                    </span>
+                )}
+                {attachment.type_name && (
+                    <span className="block truncate text-[11px] text-muted-foreground">
+                        {attachment.type_name}
                     </span>
                 )}
             </span>
@@ -380,19 +405,33 @@ export default function IncidentShow({
     conversation,
     routing,
     attachment_groups,
+    attachment_types,
 }: {
     incident: Incident;
     conversation: Conversation;
     routing: Routing;
     attachment_groups?: AttachmentGroup[];
+    attachment_types: AttachmentTypes;
 }) {
     const [viewingAttachment, setViewingAttachment] =
         useState<Attachment | null>(null);
     const fileInput = useRef<HTMLInputElement>(null);
-    const messageForm = useForm<{ message: string; attachments: File[] }>({
+    const [attachmentDialogOpen, setAttachmentDialogOpen] = useState(false);
+    const [attachmentTypeEditor, setAttachmentTypeEditor] = useState<
+        'create' | 'edit' | null
+    >(null);
+    const messageForm = useForm<{
+        message: string;
+        attachment_type_id: string;
+        attachments: File[];
+    }>({
         message: '',
+        attachment_type_id: '',
         attachments: [],
     });
+    const createAttachmentTypeForm = useForm({ name: '' });
+    const editAttachmentTypeForm = useForm({ name: '' });
+    const deleteAttachmentTypeForm = useForm({});
     const statusForm = useForm<{ status: string }>({ status: '' });
     const routingForm = useForm<{ region_ids: string[] }>({
         region_ids: routing.routed_regions.map((region) => region.id),
@@ -402,6 +441,10 @@ export default function IncidentShow({
     const attachmentError = Object.entries(messageForm.errors).find(([key]) =>
         key.startsWith('attachments'),
     )?.[1];
+    const selectedAttachmentType = attachment_types.items.find(
+        (attachmentType) =>
+            attachmentType.id === messageForm.data.attachment_type_id,
+    );
 
     const chooseAttachments = (event: ChangeEvent<HTMLInputElement>) => {
         const selectedFiles = Array.from(event.target.files ?? []);
@@ -409,7 +452,64 @@ export default function IncidentShow({
             'attachments',
             [...messageForm.data.attachments, ...selectedFiles].slice(0, 5),
         );
+
+        if (selectedFiles.length > 0) {
+            setAttachmentDialogOpen(false);
+        }
+
         event.target.value = '';
+    };
+
+    const createAttachmentType = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        createAttachmentTypeForm.post(storeAttachmentType.url(), {
+            only: ['attachment_types'],
+            preserveScroll: true,
+            onSuccess: () => {
+                createAttachmentTypeForm.reset();
+                setAttachmentTypeEditor(null);
+            },
+        });
+    };
+
+    const editAttachmentType = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+
+        if (!selectedAttachmentType) {
+            return;
+        }
+
+        editAttachmentTypeForm.put(
+            updateAttachmentType.url(selectedAttachmentType.id),
+            {
+                only: ['attachment_types'],
+                preserveScroll: true,
+                onSuccess: () => setAttachmentTypeEditor(null),
+            },
+        );
+    };
+
+    const deleteSelectedAttachmentType = () => {
+        if (
+            !selectedAttachmentType ||
+            !window.confirm(
+                `Delete the “${selectedAttachmentType.name}” attachment type? Existing files will be kept.`,
+            )
+        ) {
+            return;
+        }
+
+        deleteAttachmentTypeForm.delete(
+            destroyAttachmentType.url(selectedAttachmentType.id),
+            {
+                only: ['attachment_types'],
+                preserveScroll: true,
+                onSuccess: () => {
+                    messageForm.setData('attachment_type_id', '');
+                    setAttachmentTypeEditor(null);
+                },
+            },
+        );
     };
 
     const removeAttachment = (index: number) => {
@@ -791,24 +891,41 @@ export default function IncidentShow({
                                     }
                                 />
                                 {messageForm.data.attachments.length > 0 && (
-                                    <div className="flex flex-wrap gap-2">
-                                        {messageForm.data.attachments.map(
-                                            (attachment, index) => (
-                                                <SelectedAttachmentChip
-                                                    key={`${attachment.name}-${index}`}
-                                                    attachment={attachment}
-                                                    onRemove={() =>
-                                                        removeAttachment(index)
+                                    <div className="space-y-2">
+                                        {selectedAttachmentType && (
+                                            <p className="text-xs text-muted-foreground">
+                                                Attachment type:{' '}
+                                                <span className="font-medium text-foreground">
+                                                    {
+                                                        selectedAttachmentType.name
                                                     }
-                                                />
-                                            ),
+                                                </span>
+                                            </p>
                                         )}
+                                        <div className="flex flex-wrap gap-2">
+                                            {messageForm.data.attachments.map(
+                                                (attachment, index) => (
+                                                    <SelectedAttachmentChip
+                                                        key={`${attachment.name}-${index}`}
+                                                        attachment={attachment}
+                                                        onRemove={() =>
+                                                            removeAttachment(
+                                                                index,
+                                                            )
+                                                        }
+                                                    />
+                                                ),
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                                 {(messageForm.errors.message ||
+                                    messageForm.errors.attachment_type_id ||
                                     attachmentError) && (
                                     <p className="text-sm text-destructive">
                                         {messageForm.errors.message ??
+                                            messageForm.errors
+                                                .attachment_type_id ??
                                             attachmentError}
                                     </p>
                                 )}
@@ -838,7 +955,7 @@ export default function IncidentShow({
                                                     .length >= 5
                                             }
                                             onClick={() =>
-                                                fileInput.current?.click()
+                                                setAttachmentDialogOpen(true)
                                             }
                                         >
                                             <Paperclip /> Attach
@@ -994,6 +1111,204 @@ export default function IncidentShow({
                     </CardContent>
                 </Card>
             </div>
+
+            <Dialog
+                open={attachmentDialogOpen}
+                onOpenChange={(open) => {
+                    setAttachmentDialogOpen(open);
+
+                    if (!open) {
+                        setAttachmentTypeEditor(null);
+                        createAttachmentTypeForm.clearErrors();
+                        editAttachmentTypeForm.clearErrors();
+                    }
+                }}
+            >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Attach files</DialogTitle>
+                        <DialogDescription>
+                            Select an attachment type for your region, then
+                            browse for one or more files.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="attachment-type">
+                                Attachment type
+                            </Label>
+                            <div className="flex items-start gap-2">
+                                <div
+                                    id="attachment-type"
+                                    className="min-w-0 flex-1"
+                                >
+                                    <SearchableCommand
+                                        value={
+                                            messageForm.data.attachment_type_id
+                                        }
+                                        options={attachment_types.items.map(
+                                            (attachmentType) => ({
+                                                value: attachmentType.id,
+                                                label: attachmentType.name,
+                                            }),
+                                        )}
+                                        placeholder="Select attachment type"
+                                        searchPlaceholder="Search attachment types..."
+                                        emptyMessage="No attachment types in your region."
+                                        onValueChange={(value) => {
+                                            messageForm.setData(
+                                                'attachment_type_id',
+                                                value,
+                                            );
+                                            setAttachmentTypeEditor(null);
+                                        }}
+                                    />
+                                </div>
+                                {attachment_types.can_manage && (
+                                    <div className="flex gap-1">
+                                        <Button
+                                            type="button"
+                                            size="icon"
+                                            variant="outline"
+                                            aria-label="Add attachment type"
+                                            onClick={() => {
+                                                createAttachmentTypeForm.reset();
+                                                setAttachmentTypeEditor(
+                                                    'create',
+                                                );
+                                            }}
+                                        >
+                                            <Plus />
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            size="icon"
+                                            variant="outline"
+                                            aria-label="Edit selected attachment type"
+                                            disabled={!selectedAttachmentType}
+                                            onClick={() => {
+                                                if (selectedAttachmentType) {
+                                                    editAttachmentTypeForm.setData(
+                                                        'name',
+                                                        selectedAttachmentType.name,
+                                                    );
+                                                    setAttachmentTypeEditor(
+                                                        'edit',
+                                                    );
+                                                }
+                                            }}
+                                        >
+                                            <Pencil />
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            size="icon"
+                                            variant="outline"
+                                            aria-label="Delete selected attachment type"
+                                            disabled={
+                                                !selectedAttachmentType ||
+                                                deleteAttachmentTypeForm.processing
+                                            }
+                                            onClick={
+                                                deleteSelectedAttachmentType
+                                            }
+                                        >
+                                            <Trash2 />
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {attachmentTypeEditor && (
+                            <form
+                                className="space-y-3 rounded-lg border bg-muted/30 p-3"
+                                onSubmit={
+                                    attachmentTypeEditor === 'create'
+                                        ? createAttachmentType
+                                        : editAttachmentType
+                                }
+                            >
+                                <Label htmlFor="attachment-type-name">
+                                    {attachmentTypeEditor === 'create'
+                                        ? 'New attachment type'
+                                        : 'Rename attachment type'}
+                                </Label>
+                                <Input
+                                    id="attachment-type-name"
+                                    autoFocus
+                                    value={
+                                        attachmentTypeEditor === 'create'
+                                            ? createAttachmentTypeForm.data.name
+                                            : editAttachmentTypeForm.data.name
+                                    }
+                                    placeholder="e.g. Investigation report"
+                                    onChange={(event) =>
+                                        attachmentTypeEditor === 'create'
+                                            ? createAttachmentTypeForm.setData(
+                                                  'name',
+                                                  event.target.value,
+                                              )
+                                            : editAttachmentTypeForm.setData(
+                                                  'name',
+                                                  event.target.value,
+                                              )
+                                    }
+                                />
+                                {(attachmentTypeEditor === 'create'
+                                    ? createAttachmentTypeForm.errors.name
+                                    : editAttachmentTypeForm.errors.name) && (
+                                    <p className="text-sm text-destructive">
+                                        {attachmentTypeEditor === 'create'
+                                            ? createAttachmentTypeForm.errors
+                                                  .name
+                                            : editAttachmentTypeForm.errors
+                                                  .name}
+                                    </p>
+                                )}
+                                <div className="flex justify-end gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={() =>
+                                            setAttachmentTypeEditor(null)
+                                        }
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        type="submit"
+                                        disabled={
+                                            attachmentTypeEditor === 'create'
+                                                ? createAttachmentTypeForm.processing
+                                                : editAttachmentTypeForm.processing
+                                        }
+                                    >
+                                        Save
+                                    </Button>
+                                </div>
+                            </form>
+                        )}
+
+                        {messageForm.errors.attachment_type_id && (
+                            <p className="text-sm text-destructive">
+                                {messageForm.errors.attachment_type_id}
+                            </p>
+                        )}
+                    </div>
+
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            disabled={!selectedAttachmentType}
+                            onClick={() => fileInput.current?.click()}
+                        >
+                            <Paperclip /> Browse files
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <Dialog
                 open={viewingAttachment !== null}

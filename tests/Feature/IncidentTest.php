@@ -3,6 +3,7 @@
 use App\Enums\FormFieldType;
 use App\Enums\IncidentStatusIcon;
 use App\Enums\UserRoleGroup;
+use App\Models\AttachmentType;
 use App\Models\FormField;
 use App\Models\FormFieldOption;
 use App\Models\FormSection;
@@ -542,7 +543,11 @@ test('users can view a regional incident report and its conversation', function 
         ->for($incident)
         ->for($centralUser)
         ->create(['message' => 'Central Office reviewed the report.']);
+    $attachmentType = AttachmentType::factory()->for($region)->create([
+        'name' => 'Review document',
+    ]);
     IncidentMessageAttachment::factory()->for($message, 'message')->create([
+        'attachment_type_id' => $attachmentType->id,
         'original_name' => 'review.pdf',
         'path' => 'incident-messages/review.pdf',
         'mime_type' => 'application/pdf',
@@ -560,6 +565,7 @@ test('users can view a regional incident report and its conversation', function 
             ->where('conversation.messages.0.sender_label', 'CHED CO')
             ->where('conversation.messages.0.is_own', false)
             ->where('conversation.messages.0.attachments.0.name', 'review.pdf')
+            ->where('conversation.messages.0.attachments.0.type_name', 'Review document')
             ->where('conversation.has_earlier_messages', false)
             ->where('conversation.message_limit', 30)
             ->where('incident.status_label', 'Resolved')
@@ -663,6 +669,9 @@ test('users can send incident messages with up to five public attachments', func
     $region = Region::factory()->create();
     $user = incidentUser($region);
     $incident = Incident::factory()->for($region)->create(['status' => 'Pending']);
+    $attachmentType = AttachmentType::factory()->for($region)->create([
+        'name' => 'Evidence',
+    ]);
     $attachments = [
         UploadedFile::fake()->image('photo.jpg')->size(100),
         UploadedFile::fake()->create('document.pdf', 200, 'application/pdf'),
@@ -670,7 +679,14 @@ test('users can send incident messages with up to five public attachments', func
 
     $this->actingAs($user)
         ->post(route('incidents.messages.store', $incident), [
+            'attachments' => [UploadedFile::fake()->image('untyped.jpg')],
+        ])
+        ->assertSessionHasErrors('attachment_type_id');
+
+    $this->actingAs($user)
+        ->post(route('incidents.messages.store', $incident), [
             'message' => 'Please review these files.',
+            'attachment_type_id' => $attachmentType->id,
             'attachments' => $attachments,
         ])
         ->assertRedirect()
@@ -680,7 +696,9 @@ test('users can send incident messages with up to five public attachments', func
 
     expect($message->message)->toBe('Please review these files.')
         ->and($message->user_id)->toBe($user->id)
-        ->and($message->attachments)->toHaveCount(2);
+        ->and($message->attachments)->toHaveCount(2)
+        ->and($message->attachments->pluck('attachment_type_id')->unique()->all())
+        ->toBe([$attachmentType->id]);
 
     $message->attachments->each(
         fn (IncidentMessageAttachment $attachment) => Storage::disk('public')->assertExists($attachment->path),
@@ -693,9 +711,11 @@ test('incident message attachments enforce file count type and size limits', fun
     $region = Region::factory()->create();
     $user = incidentUser($region);
     $incident = Incident::factory()->for($region)->create(['status' => 'Pending']);
+    $attachmentType = AttachmentType::factory()->for($region)->create();
 
     $this->actingAs($user)
         ->post(route('incidents.messages.store', $incident), [
+            'attachment_type_id' => $attachmentType->id,
             'attachments' => collect(range(1, 6))
                 ->map(fn (int $index) => UploadedFile::fake()->image("photo-{$index}.png"))
                 ->all(),
@@ -704,17 +724,85 @@ test('incident message attachments enforce file count type and size limits', fun
 
     $this->actingAs($user)
         ->post(route('incidents.messages.store', $incident), [
+            'attachment_type_id' => $attachmentType->id,
             'attachments' => [UploadedFile::fake()->create('archive.zip', 100, 'application/zip')],
         ])
         ->assertSessionHasErrors('attachments.0');
 
     $this->actingAs($user)
         ->post(route('incidents.messages.store', $incident), [
+            'attachment_type_id' => $attachmentType->id,
             'attachments' => [UploadedFile::fake()->create('large.pdf', 5121, 'application/pdf')],
         ])
         ->assertSessionHasErrors('attachments.0');
 
     expect($incident->messages()->doesntExist())->toBeTrue();
+});
+
+test('incident attachment types are scoped to the responders region', function () {
+    $region = Region::factory()->create();
+    $otherRegion = Region::factory()->create();
+    $user = incidentUser($region);
+    $incident = Incident::factory()->for($region)->create(['status' => 'Pending']);
+    $regionalType = AttachmentType::factory()->for($region)->create(['name' => 'Evidence']);
+    AttachmentType::factory()->for($otherRegion)->create(['name' => 'Other regional file']);
+
+    $this->actingAs($user)
+        ->get(route('incidents.show', $incident))
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('attachment_types.items', 1)
+            ->where('attachment_types.items.0.id', $regionalType->id)
+            ->where('attachment_types.items.0.name', 'Evidence')
+            ->where('attachment_types.can_manage', false)
+        );
+
+    $this->actingAs($user)
+        ->post(route('incidents.messages.store', $incident), [
+            'attachment_type_id' => AttachmentType::query()
+                ->where('region_id', $otherRegion->id)
+                ->value('id'),
+            'attachments' => [UploadedFile::fake()->image('evidence.jpg')],
+        ])
+        ->assertSessionHasErrors('attachment_type_id');
+});
+
+test('regional administrators can manage only their attachment types', function () {
+    $region = Region::factory()->create();
+    $otherRegion = Region::factory()->create();
+    $administrator = incidentUser($region, UserRole::RegionalOfficeAdministrator);
+    $otherType = AttachmentType::factory()->for($otherRegion)->create();
+
+    $this->actingAs($administrator)
+        ->post(route('attachment-types.store'), ['name' => 'Investigation report'])
+        ->assertRedirect();
+
+    $attachmentType = AttachmentType::query()
+        ->where('region_id', $region->id)
+        ->where('name', 'Investigation report')
+        ->firstOrFail();
+
+    $this->actingAs($administrator)
+        ->put(route('attachment-types.update', $attachmentType), ['name' => 'Final report'])
+        ->assertRedirect();
+
+    expect($attachmentType->refresh()->name)->toBe('Final report');
+
+    $attachment = IncidentMessageAttachment::factory()->create([
+        'attachment_type_id' => $attachmentType->id,
+    ]);
+
+    $this->actingAs($administrator)
+        ->put(route('attachment-types.update', $otherType), ['name' => 'Forbidden'])
+        ->assertForbidden();
+
+    $this->actingAs($administrator)
+        ->delete(route('attachment-types.destroy', $attachmentType))
+        ->assertRedirect();
+
+    expect($attachmentType->fresh())->toBeNull();
+    expect($attachment->fresh())
+        ->not->toBeNull()
+        ->attachment_type_id->toBeNull();
 });
 
 test('resolved and unresolved incidents lock messages until returned to pending', function () {

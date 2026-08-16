@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AttachmentTypeController;
 use App\Http\Controllers\FormManagementController;
 use App\Http\Controllers\IncidentController;
 use App\Http\Controllers\IncidentFormController;
@@ -50,6 +51,15 @@ Route::put('incidents/{incident}/routing', [IncidentRoutingController::class, 'u
 Route::delete('incidents/{incident}', [IncidentController::class, 'destroy'])
     ->middleware(['auth', 'verified'])
     ->name('incidents.destroy');
+
+Route::middleware(['auth', 'verified', 'can:manage-forms'])->group(function () {
+    Route::post('attachment-types', [AttachmentTypeController::class, 'store'])
+        ->name('attachment-types.store');
+    Route::put('attachment-types/{attachment_type}', [AttachmentTypeController::class, 'update'])
+        ->name('attachment-types.update');
+    Route::delete('attachment-types/{attachment_type}', [AttachmentTypeController::class, 'destroy'])
+        ->name('attachment-types.destroy');
+});
 
 Route::middleware(['auth', 'verified', 'can:manage-forms'])->group(function () {
     Route::get('form-management', [FormManagementController::class, 'index'])

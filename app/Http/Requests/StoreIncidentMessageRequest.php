@@ -2,9 +2,11 @@
 
 namespace App\Http\Requests;
 
+use App\Models\AttachmentType;
 use App\Models\Incident;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\File;
 
 class StoreIncidentMessageRequest extends FormRequest
@@ -31,6 +33,12 @@ class StoreIncidentMessageRequest extends FormRequest
         return [
             'message' => ['nullable', 'string', 'max:5000', 'required_without:attachments'],
             'attachments' => ['nullable', 'array', 'max:5', 'required_without:message'],
+            'attachment_type_id' => [
+                'nullable',
+                'required_with:attachments',
+                Rule::exists(AttachmentType::class, 'id')
+                    ->where(fn ($query) => $query->where('region_id', $this->user()->region_id)),
+            ],
             'attachments.*' => [
                 'file',
                 File::types(['jpg', 'jpeg', 'png', 'pdf', 'doc', 'docx'])->max(5 * 1024),

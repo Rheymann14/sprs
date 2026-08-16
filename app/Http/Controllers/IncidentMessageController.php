@@ -18,6 +18,7 @@ class IncidentMessageController extends Controller
 
         foreach ($request->file('attachments', []) as $attachment) {
             $message->attachments()->create([
+                'attachment_type_id' => $request->validated('attachment_type_id'),
                 'original_name' => $attachment->getClientOriginalName(),
                 'path' => $attachment->store('incident-messages', 'public'),
                 'mime_type' => $attachment->getMimeType() ?? 'application/octet-stream',

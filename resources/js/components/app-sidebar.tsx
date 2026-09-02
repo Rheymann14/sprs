@@ -2,11 +2,13 @@ import { Link, usePage } from '@inertiajs/react';
 import {
     ClipboardList,
     ChartNoAxesColumnIncreasing,
+    List,
     Siren,
     Users,
 } from 'lucide-react';
 import { index as formManagement } from '@/actions/App/Http/Controllers/FormManagementController';
 import { index as incidents } from '@/actions/App/Http/Controllers/IncidentController';
+import { index as rawList } from '@/actions/App/Http/Controllers/RawIncidentController';
 import { index as userManagement } from '@/actions/App/Http/Controllers/UserManagementController';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
@@ -28,6 +30,7 @@ export function AppSidebar() {
     const { auth } = usePage().props;
     const statisticsUrl = statistics();
     const incidentsUrl = incidents();
+    const rawListUrl = rawList();
     const formManagementUrl = formManagement();
     const userManagementUrl = userManagement();
 
@@ -45,6 +48,11 @@ export function AppSidebar() {
             title: 'Incidents',
             href: incidentsUrl,
             icon: Siren,
+        },
+        {
+            title: 'Raw List',
+            href: rawListUrl,
+            icon: List,
         },
         ...(auth.permissions.manage_forms
             ? [

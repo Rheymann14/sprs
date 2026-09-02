@@ -9,6 +9,7 @@ use App\Http\Controllers\IncidentRoutingController;
 use App\Http\Controllers\IncidentStatusController;
 use App\Http\Controllers\IncidentSubcategoryController;
 use App\Http\Controllers\IncidentTypeController;
+use App\Http\Controllers\RawIncidentController;
 use App\Http\Controllers\RegionController;
 use App\Http\Controllers\StatisticsController;
 use App\Http\Controllers\UserManagementController;
@@ -33,6 +34,12 @@ Route::get('incidents/report/{incident}', [IncidentController::class, 'edit'])
 Route::get('incidents/{incident}', [IncidentController::class, 'show'])
     ->middleware(['auth', 'verified'])
     ->name('incidents.show');
+Route::get('raw-list', [RawIncidentController::class, 'index'])
+    ->middleware(['auth', 'verified'])
+    ->name('raw-list.index');
+Route::get('raw-list/{incident}', [RawIncidentController::class, 'show'])
+    ->middleware(['auth', 'verified'])
+    ->name('raw-list.show');
 Route::post('incidents/{incident}/messages', [IncidentMessageController::class, 'store'])
     ->middleware(['auth', 'verified'])
     ->name('incidents.messages.store');

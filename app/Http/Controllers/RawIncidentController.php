@@ -3,93 +3,86 @@
 namespace App\Http\Controllers;
 
 use App\Enums\FormFieldType;
+use App\Exports\RawIncidentWorkbook;
 use App\Http\Requests\RawIncidentIndexRequest;
 use App\Models\Incident;
+use App\Models\IncidentSubcategory;
 use App\Models\IncidentType;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class RawIncidentController extends Controller
 {
+    public function __construct(private RawIncidentWorkbook $workbook) {}
+
     public function index(RawIncidentIndexRequest $request): Response
     {
-        $filters = $request->validated();
-        $incidentTypeId = $filters['incident_type_id'] ?? '';
-        $subcategoryId = $filters['subcategory_id'] ?? '';
-        $dateFrom = $filters['date_from'] ?? '';
-        $dateTo = $filters['date_to'] ?? '';
+        $filters = $this->filters($request);
+        $incidents = $this->filteredIncidents($request->user(), $filters)
+            ->paginate(15)
+            ->withQueryString()
+            ->through(fn (Incident $incident): array => $this->incidentRow($incident));
 
-        $incidents = $this->accessibleIncidents($request->user())
-            ->select('id', 'incident_number', 'incident_subcategory_id', 'region_id', 'status', 'created_at')
+        return Inertia::render('raw-list/index', [
+            'incidents' => $incidents,
+            'incidentTypes' => $this->incidentTypesForAccessibleIncidents($request->user()),
+            'filters' => $filters,
+        ]);
+    }
+
+    public function download(RawIncidentIndexRequest $request): StreamedResponse
+    {
+        $filters = $this->filters($request);
+        $incidents = $this->filteredIncidents($request->user(), $filters)
+            ->get()
+            ->map(fn (Incident $incident): array => $this->incidentRow($incident))
+            ->values()
+            ->all();
+
+        return response()->streamDownload(
+            fn () => $this->workbook->write($incidents, 'php://output'),
+            'raw-incidents-'.now()->toDateString().'.xlsx',
+            [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Cache-Control' => 'no-store, no-cache',
+            ],
+        );
+    }
+
+    /**
+     * @param  array{date_from: string, date_to: string, incident_type_id: string, subcategory_id: string, sort_by: 'created_at'|'incident_number'|'status', sort_direction: 'asc'|'desc'}  $filters
+     * @return Builder<Incident>
+     */
+    private function filteredIncidents(User $user, array $filters): Builder
+    {
+        return $this->accessibleIncidents($user)
+            ->select('id', 'incident_number', 'incident_subcategory_id', 'region_id', 'status', 'report_data', 'created_at')
             ->with([
                 'region:id,name',
                 'subcategory:id,incident_type_id,name',
                 'subcategory.incidentType:id,name',
             ])
-            ->when($dateFrom !== '', fn (Builder $query) => $query->whereDate('created_at', '>=', $dateFrom))
-            ->when($dateTo !== '', fn (Builder $query) => $query->whereDate('created_at', '<=', $dateTo))
-            ->when($incidentTypeId !== '', function (Builder $query) use ($incidentTypeId): void {
-                $query->whereHas(
-                    'subcategory',
-                    fn (Builder $subcategoryQuery) => $subcategoryQuery->where('incident_type_id', $incidentTypeId),
+            ->when($filters['date_from'] !== '', fn (Builder $query) => $query->whereDate('created_at', '>=', $filters['date_from']))
+            ->when($filters['date_to'] !== '', fn (Builder $query) => $query->whereDate('created_at', '<=', $filters['date_to']))
+            ->when($filters['incident_type_id'] !== '', function (Builder $query) use ($filters): void {
+                $query->whereIn(
+                    'incident_subcategory_id',
+                    IncidentSubcategory::query()
+                        ->select('id')
+                        ->where('incident_type_id', $filters['incident_type_id']),
                 );
             })
-            ->when($subcategoryId !== '', fn (Builder $query) => $query->where('incident_subcategory_id', $subcategoryId))
-            ->latest()
-            ->paginate(15)
-            ->withQueryString()
-            ->through(fn (Incident $incident): array => [
-                'id' => $incident->id,
-                'incident_number' => $incident->incident_number,
-                'incident_type' => $incident->subcategory->incidentType->name,
-                'subcategory' => $incident->subcategory->name,
-                'region' => $incident->region->name,
-                'status' => $incident->status,
-                'created_at' => $incident->created_at?->toIso8601String(),
-            ]);
-
-        return Inertia::render('raw-list/index', [
-            'incidents' => $incidents,
-            'incidentTypes' => $this->incidentTypesForAccessibleIncidents($request->user()),
-            'filters' => [
-                'date_from' => $dateFrom,
-                'date_to' => $dateTo,
-                'incident_type_id' => $incidentTypeId,
-                'subcategory_id' => $subcategoryId,
-            ],
-        ]);
-    }
-
-    public function show(Request $request, Incident $incident): Response
-    {
-        abort_unless($incident->isAccessibleBy($request->user()), 403);
-
-        $incident->load([
-            'region:id,name',
-            'subcategory:id,incident_type_id,name',
-            'subcategory.incidentType:id,name',
-        ]);
-
-        return Inertia::render('raw-list/show', [
-            'incident' => [
-                'id' => $incident->id,
-                'incident_number' => $incident->incident_number,
-                'incident_type' => $incident->subcategory->incidentType->name,
-                'subcategory' => $incident->subcategory->name,
-                'region' => $incident->region->name,
-                'status' => $incident->status,
-                'created_at' => $incident->created_at?->toIso8601String(),
-                'report_title' => data_get($incident->report_data, 'title', 'Incident report'),
-                'report_description' => data_get($incident->report_data, 'description'),
-                'report_sections' => $this->reportSections($incident->report_data),
-            ],
-        ]);
+            ->when(
+                $filters['subcategory_id'] !== '',
+                fn (Builder $query) => $query->where('incident_subcategory_id', $filters['subcategory_id']),
+            )
+            ->orderBy($filters['sort_by'], $filters['sort_direction'])
+            ->orderByDesc('id');
     }
 
     /** @return Builder<Incident> */
@@ -121,8 +114,9 @@ class RawIncidentController extends Controller
                 'subcategories',
                 fn (Builder $query) => $query->whereIn('id', clone $subcategoryIds),
             )
-            ->with(['subcategories' => function (HasMany $query) use ($subcategoryIds): void {
-                $query
+            ->with(['subcategories' => function (Relation $relation) use ($subcategoryIds): void {
+                $relation
+                    ->getQuery()
                     ->select('id', 'incident_type_id', 'name')
                     ->whereIn('id', clone $subcategoryIds)
                     ->orderBy('name');
@@ -132,10 +126,55 @@ class RawIncidentController extends Controller
     }
 
     /**
-     * @param  array<string, mixed>|null  $reportData
-     * @return array<int, array<string, mixed>>
+     * @return array{date_from: string, date_to: string, incident_type_id: string, subcategory_id: string, sort_by: 'created_at'|'incident_number'|'status', sort_direction: 'asc'|'desc'}
      */
-    private function reportSections(?array $reportData): array
+    private function filters(RawIncidentIndexRequest $request): array
+    {
+        $validated = $request->validated();
+        $sortBy = match ($validated['sort_by'] ?? null) {
+            'incident_number' => 'incident_number',
+            'status' => 'status',
+            default => 'created_at',
+        };
+        $sortDirection = ($validated['sort_direction'] ?? null) === 'asc' ? 'asc' : 'desc';
+
+        return [
+            'date_from' => $validated['date_from'] ?? '',
+            'date_to' => $validated['date_to'] ?? '',
+            'incident_type_id' => $validated['incident_type_id'] ?? '',
+            'subcategory_id' => $validated['subcategory_id'] ?? '',
+            'sort_by' => $sortBy,
+            'sort_direction' => $sortDirection,
+        ];
+    }
+
+    /**
+     * @return array{id: string, incident_number: string, incident_type: string, subcategory: string, region: string, status: string, created_at: string|null, answers: array<int, array{label: string, value: string}>, answers_text: string}
+     */
+    private function incidentRow(Incident $incident): array
+    {
+        $answers = $this->reportAnswers($incident->report_data);
+
+        return [
+            'id' => $incident->id,
+            'incident_number' => $incident->incident_number,
+            'incident_type' => $incident->subcategory->incidentType->name,
+            'subcategory' => $incident->subcategory->name,
+            'region' => $incident->region->name,
+            'status' => $incident->status,
+            'created_at' => $incident->created_at?->toIso8601String(),
+            'answers' => $answers,
+            'answers_text' => collect($answers)
+                ->map(fn (array $answer): string => "{$answer['label']}: {$answer['value']}")
+                ->implode("\n"),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $reportData
+     * @return array<int, array{label: string, value: string}>
+     */
+    private function reportAnswers(?array $reportData): array
     {
         $sections = $reportData['sections'] ?? null;
 
@@ -145,61 +184,29 @@ class RawIncidentController extends Controller
 
         return collect($sections)
             ->filter(fn (mixed $section): bool => is_array($section))
-            ->map(function (array $section): array {
-                return [
-                    'title' => is_string($section['title'] ?? null) ? $section['title'] : null,
-                    'description' => is_string($section['description'] ?? null) ? $section['description'] : null,
-                    'fields' => collect($section['fields'] ?? [])
-                        ->filter(fn (mixed $field): bool => is_array($field))
-                        ->map(fn (array $field): array => $this->reportField($field))
-                        ->values()
-                        ->all(),
-                ];
-            })
+            ->flatMap(fn (array $section): array => is_array($section['fields'] ?? null) ? $section['fields'] : [])
+            ->filter(fn (mixed $field): bool => is_array($field))
+            ->map(fn (array $field): array => [
+                'label' => is_string($field['label'] ?? null) ? $field['label'] : __('Untitled field'),
+                'value' => $this->reportValue($field),
+            ])
             ->values()
             ->all();
     }
 
-    /**
-     * @param  array<string, mixed>  $field
-     * @return array{label: string, value: string, attachment: array{name: string, url: string}|null}
-     */
-    private function reportField(array $field): array
+    /** @param array<string, mixed> $field */
+    private function reportValue(array $field): string
     {
         $value = $field['display_value'] ?? $field['value'] ?? null;
-        $attachment = null;
 
         if (($field['type'] ?? null) === FormFieldType::File->value && is_array($value)) {
-            $path = $value['path'] ?? null;
-            $name = $value['name'] ?? null;
-
-            if (is_string($path)) {
-                $attachment = [
-                    'name' => is_string($name) ? $name : basename($path),
-                    'url' => $this->reportAttachmentUrl($path),
-                ];
-            }
-
-            $value = $attachment['name'] ?? null;
+            $value = $value['name'] ?? null;
         } elseif (is_bool($value)) {
             $value = $value ? __('Yes') : __('No');
         } elseif (is_array($value)) {
             $value = collect($value)->filter(fn (mixed $item): bool => is_scalar($item))->implode(', ');
         }
 
-        return [
-            'label' => is_string($field['label'] ?? null) ? $field['label'] : __('Untitled field'),
-            'value' => filled($value) ? (string) $value : '—',
-            'attachment' => $attachment,
-        ];
-    }
-
-    private function reportAttachmentUrl(string $path): string
-    {
-        if (Storage::disk('public')->exists($path)) {
-            return Storage::disk('public')->url($path);
-        }
-
-        return Storage::disk('local')->temporaryUrl($path, now()->addMinutes(30));
+        return filled($value) ? (string) $value : '—';
     }
 }

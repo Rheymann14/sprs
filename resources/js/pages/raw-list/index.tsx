@@ -1,10 +1,20 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { ChevronLeft, ChevronRight, Eye, Filter, List, X } from 'lucide-react';
+import {
+    ArrowDown,
+    ArrowUp,
+    ArrowUpDown,
+    ChevronLeft,
+    ChevronRight,
+    Download,
+    Filter,
+    List,
+    X,
+} from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useState } from 'react';
 import {
+    download as exportRawList,
     index as rawListIndex,
-    show as showRawIncident,
 } from '@/actions/App/Http/Controllers/RawIncidentController';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +29,9 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
+type SortColumn = 'created_at' | 'incident_number' | 'status';
+type SortDirection = 'asc' | 'desc';
+
 type Incident = {
     id: string;
     incident_number: string;
@@ -27,6 +40,7 @@ type Incident = {
     region: string;
     status: string;
     created_at: string;
+    answers: Array<{ label: string; value: string }>;
 };
 
 type IncidentType = {
@@ -40,6 +54,8 @@ type Filters = {
     date_to: string;
     incident_type_id: string;
     subcategory_id: string;
+    sort_by: SortColumn;
+    sort_direction: SortDirection;
 };
 
 type PaginatedIncidents = {
@@ -63,7 +79,12 @@ export default function RawList({
     incidentTypes: IncidentType[];
     filters: Filters;
 }) {
-    const [filterValues, setFilterValues] = useState(filters);
+    const [filterValues, setFilterValues] = useState({
+        date_from: filters.date_from,
+        date_to: filters.date_to,
+        incident_type_id: filters.incident_type_id,
+        subcategory_id: filters.subcategory_id,
+    });
     const selectedType = incidentTypes.find(
         (incidentType) => incidentType.id === filterValues.incident_type_id,
     );
@@ -72,8 +93,15 @@ export default function RawList({
         date_to: filters.date_to || undefined,
         incident_type_id: filters.incident_type_id || undefined,
         subcategory_id: filters.subcategory_id || undefined,
+        sort_by: filters.sort_by,
+        sort_direction: filters.sort_direction,
     };
-    const hasFilters = Object.values(filters).some(Boolean);
+    const hasFilters = Boolean(
+        filters.date_from ||
+        filters.date_to ||
+        filters.incident_type_id ||
+        filters.subcategory_id,
+    );
 
     const applyFilters = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -85,10 +113,37 @@ export default function RawList({
                     incident_type_id:
                         filterValues.incident_type_id || undefined,
                     subcategory_id: filterValues.subcategory_id || undefined,
+                    sort_by: filters.sort_by,
+                    sort_direction: filters.sort_direction,
                 },
             }),
             {},
             { preserveScroll: true, preserveState: true, replace: true },
+        );
+    };
+
+    const sortHref = (column: SortColumn) =>
+        rawListIndex({
+            query: {
+                ...query,
+                sort_by: column,
+                sort_direction:
+                    filters.sort_by === column &&
+                    filters.sort_direction === 'asc'
+                        ? 'desc'
+                        : 'asc',
+            },
+        });
+
+    const sortIcon = (column: SortColumn) => {
+        if (filters.sort_by !== column) {
+            return <ArrowUpDown className="size-3.5" />;
+        }
+
+        return filters.sort_direction === 'asc' ? (
+            <ArrowUp className="size-3.5" />
+        ) : (
+            <ArrowDown className="size-3.5" />
         );
     };
 
@@ -212,7 +267,15 @@ export default function RawList({
                                         variant="outline"
                                         asChild
                                     >
-                                        <Link href={rawListIndex()}>
+                                        <Link
+                                            href={rawListIndex({
+                                                query: {
+                                                    sort_by: filters.sort_by,
+                                                    sort_direction:
+                                                        filters.sort_direction,
+                                                },
+                                            })}
+                                        >
                                             <X /> Clear
                                         </Link>
                                     </Button>
@@ -223,42 +286,75 @@ export default function RawList({
                 </Card>
 
                 <Card>
-                    <CardHeader>
-                        <div className="flex items-center gap-2">
-                            <CardTitle>Incident submissions</CardTitle>
-                            <Badge variant="secondary">{incidents.total}</Badge>
+                    <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-1.5">
+                            <div className="flex items-center gap-2">
+                                <CardTitle>Incident submissions</CardTitle>
+                                <Badge variant="secondary">
+                                    {incidents.total}
+                                </Badge>
+                            </div>
+                            <CardDescription>
+                                Form answers are shown directly in each incident
+                                row.
+                            </CardDescription>
                         </div>
-                        <CardDescription>
-                            Open a row to view the answers saved when the report
-                            was submitted.
-                        </CardDescription>
+                        <Button asChild>
+                            <a href={exportRawList.url({ query })}>
+                                <Download /> Export to Excel
+                            </a>
+                        </Button>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         {incidents.data.length > 0 ? (
                             <div className="overflow-x-auto rounded-xl border">
-                                <table className="w-full min-w-4xl text-sm">
-                                    <thead className="border-b bg-muted/50 text-left text-xs tracking-wide text-muted-foreground uppercase">
+                                <table className="w-full min-w-6xl text-sm">
+                                    <thead className="border-b border-blue-700 bg-blue-600 text-left text-xs tracking-wide text-white uppercase">
                                         <tr>
-                                            <th className="px-4 py-3 font-medium">
-                                                Date filed
+                                            <th className="border-r border-blue-500 px-4 py-3 font-semibold">
+                                                <Link
+                                                    href={sortHref(
+                                                        'created_at',
+                                                    )}
+                                                    className="flex items-center gap-1.5"
+                                                >
+                                                    Date filed
+                                                    {sortIcon('created_at')}
+                                                </Link>
                                             </th>
-                                            <th className="px-4 py-3 font-medium">
-                                                Incident number
+                                            <th className="border-r border-blue-500 px-4 py-3 font-semibold">
+                                                <Link
+                                                    href={sortHref(
+                                                        'incident_number',
+                                                    )}
+                                                    className="flex items-center gap-1.5"
+                                                >
+                                                    Incident number
+                                                    {sortIcon(
+                                                        'incident_number',
+                                                    )}
+                                                </Link>
                                             </th>
-                                            <th className="px-4 py-3 font-medium">
+                                            <th className="border-r border-blue-500 px-4 py-3 font-semibold">
                                                 Incident type
                                             </th>
-                                            <th className="px-4 py-3 font-medium">
+                                            <th className="border-r border-blue-500 px-4 py-3 font-semibold">
                                                 Subcategory
                                             </th>
-                                            <th className="px-4 py-3 font-medium">
+                                            <th className="border-r border-blue-500 px-4 py-3 font-semibold">
                                                 Region
                                             </th>
-                                            <th className="px-4 py-3 font-medium">
-                                                Status
+                                            <th className="border-r border-blue-500 px-4 py-3 font-semibold">
+                                                <Link
+                                                    href={sortHref('status')}
+                                                    className="flex items-center gap-1.5"
+                                                >
+                                                    Status
+                                                    {sortIcon('status')}
+                                                </Link>
                                             </th>
-                                            <th className="px-4 py-3 text-right font-medium">
-                                                Action
+                                            <th className="px-4 py-3 font-semibold">
+                                                Form answers
                                             </th>
                                         </tr>
                                     </thead>
@@ -266,44 +362,68 @@ export default function RawList({
                                         {incidents.data.map((incident) => (
                                             <tr
                                                 key={incident.id}
-                                                className="transition-colors hover:bg-muted/40"
+                                                className="align-top transition-colors hover:bg-muted/40"
                                             >
-                                                <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                                                <td className="border-r px-4 py-3 whitespace-nowrap text-muted-foreground">
                                                     {new Date(
                                                         incident.created_at,
                                                     ).toLocaleDateString()}
                                                 </td>
-                                                <td className="px-4 py-3 font-mono font-semibold whitespace-nowrap">
+                                                <td className="border-r px-4 py-3 font-mono font-semibold whitespace-nowrap">
                                                     {incident.incident_number}
                                                 </td>
-                                                <td className="px-4 py-3 font-medium">
+                                                <td className="border-r px-4 py-3 font-medium">
                                                     {incident.incident_type}
                                                 </td>
-                                                <td className="px-4 py-3 text-muted-foreground">
+                                                <td className="border-r px-4 py-3 text-muted-foreground">
                                                     {incident.subcategory}
                                                 </td>
-                                                <td className="px-4 py-3 text-muted-foreground">
+                                                <td className="border-r px-4 py-3 text-muted-foreground">
                                                     {incident.region}
                                                 </td>
-                                                <td className="px-4 py-3">
+                                                <td className="border-r px-4 py-3">
                                                     <Badge variant="outline">
                                                         {incident.status}
                                                     </Badge>
                                                 </td>
-                                                <td className="px-4 py-3 text-right">
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        asChild
-                                                    >
-                                                        <Link
-                                                            href={showRawIncident(
-                                                                incident.id,
+                                                <td className="px-4 py-3">
+                                                    {incident.answers.length >
+                                                    0 ? (
+                                                        <dl className="min-w-72 space-y-1.5 text-xs">
+                                                            {incident.answers.map(
+                                                                (
+                                                                    answer,
+                                                                    answerIndex,
+                                                                ) => (
+                                                                    <div
+                                                                        key={[
+                                                                            answer.label,
+                                                                            answerIndex,
+                                                                        ].join(
+                                                                            '-',
+                                                                        )}
+                                                                        className="grid grid-cols-[minmax(7rem,auto)_1fr] gap-2"
+                                                                    >
+                                                                        <dt className="font-semibold text-foreground">
+                                                                            {
+                                                                                answer.label
+                                                                            }
+                                                                            :
+                                                                        </dt>
+                                                                        <dd className="break-words whitespace-pre-wrap text-muted-foreground">
+                                                                            {
+                                                                                answer.value
+                                                                            }
+                                                                        </dd>
+                                                                    </div>
+                                                                ),
                                                             )}
-                                                        >
-                                                            <Eye /> View
-                                                        </Link>
-                                                    </Button>
+                                                        </dl>
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground">
+                                                            No saved answers
+                                                        </span>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}

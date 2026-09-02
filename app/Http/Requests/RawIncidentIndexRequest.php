@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class RawIncidentIndexRequest extends FormRequest
 {
@@ -27,6 +28,8 @@ class RawIncidentIndexRequest extends FormRequest
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
             'incident_type_id' => ['nullable', 'string', 'exists:incident_types,id'],
             'subcategory_id' => ['nullable', 'string', 'exists:incident_subcategories,id'],
+            'sort_by' => ['nullable', 'string', Rule::in(['created_at', 'incident_number', 'status'])],
+            'sort_direction' => ['nullable', 'string', Rule::in(['asc', 'desc'])],
         ];
     }
 }

@@ -6,9 +6,13 @@ use App\Models\IncidentType;
 use App\Models\Region;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
 
 test('guests are redirected from the raw incident list', function () {
     $this->get(route('raw-list.index'))->assertRedirect(route('login'));
+    $this->get(route('raw-list.export'))->assertRedirect(route('login'));
 });
 
 test('raw incident list is region scoped and can be filtered', function () {
@@ -58,7 +62,7 @@ test('raw incident list is region scoped and can be filtered', function () {
         );
 });
 
-test('raw incident details show the saved form answers', function () {
+test('raw incident rows show the saved form answers', function () {
     $region = Region::factory()->create();
     $user = User::factory()->for($region)->create();
     $otherUser = User::factory()->for(Region::factory())->create();
@@ -83,21 +87,19 @@ test('raw incident details show the saved form answers', function () {
         ]);
 
     $this->actingAs($user)
-        ->get(route('raw-list.show', $incident))
+        ->get(route('raw-list.index'))
         ->assertInertia(fn (Assert $page) => $page
-            ->component('raw-list/show')
-            ->where('incident.id', $incident->id)
-            ->where('incident.report_title', 'Safety report')
-            ->where('incident.report_description', 'Initial submission')
-            ->where('incident.report_sections.0.title', 'Incident details')
-            ->where('incident.report_sections.0.fields.0.label', 'Location')
-            ->where('incident.report_sections.0.fields.0.value', 'Science laboratory')
-            ->where('incident.report_sections.0.fields.1.value', 'Yes')
+            ->component('raw-list/index')
+            ->where('incidents.data.0.id', $incident->id)
+            ->where('incidents.data.0.answers.0.label', 'Location')
+            ->where('incidents.data.0.answers.0.value', 'Science laboratory')
+            ->where('incidents.data.0.answers.1.label', 'Emergency response')
+            ->where('incidents.data.0.answers.1.value', 'Yes')
         );
 
     $this->actingAs($otherUser)
-        ->get(route('raw-list.show', $incident))
-        ->assertForbidden();
+        ->get(route('raw-list.index'))
+        ->assertInertia(fn (Assert $page) => $page->where('incidents.total', 0));
 });
 
 test('routed incidents appear in the raw list for the destination region', function () {
@@ -122,4 +124,75 @@ test('raw incident list rejects an inverted date range', function () {
             'date_to' => '2026-06-01',
         ]))
         ->assertSessionHasErrors('date_to');
+});
+
+test('raw incidents export to a styled and sorted xlsx workbook', function () {
+    $region = Region::factory()->create();
+    $user = User::factory()->for($region)->create();
+    $type = IncidentType::factory()->for($region)->create(['name' => 'Safety']);
+    $subcategory = IncidentSubcategory::factory()->for($type)->create(['name' => 'Laboratory']);
+    $reportData = [
+        'sections' => [[
+            'fields' => [
+                ['label' => 'Location', 'type' => 'text', 'value' => 'Science laboratory'],
+            ],
+        ]],
+    ];
+
+    Incident::factory()
+        ->for($region)
+        ->for($subcategory, 'subcategory')
+        ->create([
+            'incident_number' => '2026-SAFETY-ZZZZ',
+            'report_data' => $reportData,
+        ]);
+    Incident::factory()
+        ->for($region)
+        ->for($subcategory, 'subcategory')
+        ->create([
+            'incident_number' => '2026-SAFETY-AAAA',
+            'report_data' => $reportData,
+        ]);
+    Incident::factory()->for(Region::factory())->create([
+        'incident_number' => '2026-HIDDEN-0000',
+    ]);
+
+    $response = $this->actingAs($user)->get(route('raw-list.export', [
+        'incident_type_id' => $type->id,
+        'subcategory_id' => $subcategory->id,
+        'sort_by' => 'incident_number',
+        'sort_direction' => 'asc',
+    ]));
+
+    $response
+        ->assertSuccessful()
+        ->assertDownload('raw-incidents-'.now()->toDateString().'.xlsx')
+        ->assertHeader(
+            'content-type',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    $workbookPath = tempnam(sys_get_temp_dir(), 'raw-incidents-test-');
+    file_put_contents($workbookPath, $response->streamedContent());
+
+    try {
+        $spreadsheet = IOFactory::load($workbookPath);
+        $worksheet = $spreadsheet->getActiveSheet();
+
+        expect($worksheet->getCell('A1')->getValue())->toBe('Date Filed')
+            ->and($worksheet->getCell('B2')->getValue())->toBe('2026-SAFETY-AAAA')
+            ->and($worksheet->getCell('B3')->getValue())->toBe('2026-SAFETY-ZZZZ')
+            ->and($worksheet->getCell('G2')->getValue())->toBe('Location: Science laboratory')
+            ->and($worksheet->getHighestRow())->toBe(3)
+            ->and($worksheet->getAutoFilter()->getRange())->toBe('A1:G3')
+            ->and($worksheet->getFreezePane())->toBe('A2')
+            ->and($worksheet->getStyle('A1')->getFill()->getFillType())->toBe(Fill::FILL_SOLID)
+            ->and($worksheet->getStyle('A1')->getFill()->getStartColor()->getRGB())->toBe('2563EB')
+            ->and($worksheet->getStyle('A1')->getBorders()->getBottom()->getBorderStyle())
+            ->toBe(Border::BORDER_THIN);
+
+        $spreadsheet->disconnectWorksheets();
+    } finally {
+        unlink($workbookPath);
+    }
 });

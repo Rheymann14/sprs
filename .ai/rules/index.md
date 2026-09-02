@@ -5,7 +5,9 @@ Before planning or editing, find the row whose globs match the file's path and r
 | Applies to | Rule file |
 | --- | --- |
 | app/** | .ai/rules/app.md |
+| {app/Exports/RawIncidentWorkbook.php,app/Http/Controllers/RawIncidentController.php,tests/Feature/RawIncidentListTest.php} | .ai/rules/controllers-feature.md |
 | {app/Http/Controllers/FormManagementController.php,app/Http/Controllers/IncidentFormController.php,app/Models/IncidentForm.php} | .ai/rules/controllers-models.md |
+| {app/Http/Controllers/RawIncidentController.php,app/Http/Requests/RawIncidentIndexRequest.php,resources/js/pages/raw-list/**,resources/views/exports/raw-incidents.blade.php,tests/Feature/RawIncidentListTest.php} | .ai/rules/exports-feature.md |
 | {app/Http/Controllers/IncidentController.php,resources/js/pages/incidents/show.tsx,tests/Feature/IncidentTest.php} | .ai/rules/feature.md |
 | {app/Models/{IncidentType,IncidentSubcategory}.php,app/Http/Controllers/{FormManagement,IncidentType,IncidentSubcategory,IncidentForm,IncidentStatus}Controller.php,app/Http/Requests/*Incident*Request.php,resources/js/pages/form-management/**,database/migrations/**} | .ai/rules/form-management-migrations.md |
 | resources/js/pages/form-management/** | .ai/rules/form-management.md |

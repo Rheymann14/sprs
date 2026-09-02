@@ -37,9 +37,9 @@ Route::get('incidents/{incident}', [IncidentController::class, 'show'])
 Route::get('raw-list', [RawIncidentController::class, 'index'])
     ->middleware(['auth', 'verified'])
     ->name('raw-list.index');
-Route::get('raw-list/{incident}', [RawIncidentController::class, 'show'])
+Route::get('raw-list/export', [RawIncidentController::class, 'download'])
     ->middleware(['auth', 'verified'])
-    ->name('raw-list.show');
+    ->name('raw-list.export');
 Route::post('incidents/{incident}/messages', [IncidentMessageController::class, 'store'])
     ->middleware(['auth', 'verified'])
     ->name('incidents.messages.store');

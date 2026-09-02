@@ -5,6 +5,8 @@ use App\Models\IncidentSubcategory;
 use App\Models\IncidentType;
 use App\Models\Region;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Style\Border;
@@ -63,6 +65,9 @@ test('raw incident list is region scoped and can be filtered', function () {
 });
 
 test('raw incident rows show the saved form answers', function () {
+    Storage::fake('public');
+    $uploadedImage = UploadedFile::fake()->image('laboratory.jpg');
+    $uploadedImagePath = $uploadedImage->storeAs('incident-reports', 'laboratory.jpg', 'public');
     $region = Region::factory()->create();
     $user = User::factory()->for($region)->create();
     $otherUser = User::factory()->for(Region::factory())->create();
@@ -81,6 +86,14 @@ test('raw incident rows show the saved form answers', function () {
                     'fields' => [
                         ['label' => 'Location', 'type' => 'text', 'value' => 'Science laboratory'],
                         ['label' => 'Emergency response', 'type' => 'checkbox', 'value' => true],
+                        [
+                            'label' => 'Scene photo',
+                            'type' => 'file',
+                            'value' => [
+                                'name' => 'laboratory.jpg',
+                                'path' => $uploadedImagePath,
+                            ],
+                        ],
                     ],
                 ]],
             ],
@@ -95,6 +108,11 @@ test('raw incident rows show the saved form answers', function () {
             ->where('incidents.data.0.answers.0.value', 'Science laboratory')
             ->where('incidents.data.0.answers.1.label', 'Emergency response')
             ->where('incidents.data.0.answers.1.value', 'Yes')
+            ->where('incidents.data.0.answers.2.label', 'Scene photo')
+            ->where('incidents.data.0.answers.2.value', 'laboratory.jpg')
+            ->where('incidents.data.0.answers.2.attachment.name', 'laboratory.jpg')
+            ->where('incidents.data.0.answers.2.attachment.url', Storage::disk('public')->url($uploadedImagePath))
+            ->where('incidents.data.0.answers.2.attachment.mime_type', 'image/jpeg')
         );
 
     $this->actingAs($otherUser)

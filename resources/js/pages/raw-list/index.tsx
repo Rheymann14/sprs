@@ -7,6 +7,8 @@ import {
     ChevronRight,
     Download,
     Filter,
+    FileImage,
+    FileText,
     List,
     X,
 } from 'lucide-react';
@@ -17,6 +19,7 @@ import {
     index as rawListIndex,
 } from '@/actions/App/Http/Controllers/RawIncidentController';
 import Heading from '@/components/heading';
+import { SearchableCommand } from '@/components/searchable-command';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -26,8 +29,21 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+
+type AnswerAttachment = {
+    name: string;
+    url: string;
+    mime_type: string;
+};
 
 type SortColumn = 'created_at' | 'incident_number' | 'status';
 type SortDirection = 'asc' | 'desc';
@@ -40,7 +56,11 @@ type Incident = {
     region: string;
     status: string;
     created_at: string;
-    answers: Array<{ label: string; value: string }>;
+    answers: Array<{
+        label: string;
+        value: string;
+        attachment: AnswerAttachment | null;
+    }>;
 };
 
 type IncidentType = {
@@ -67,9 +87,6 @@ type PaginatedIncidents = {
     total: number;
 };
 
-const selectClassName =
-    'border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border px-3 py-1 text-sm shadow-xs outline-none focus-visible:ring-[3px] dark:bg-input/30';
-
 export default function RawList({
     incidents,
     incidentTypes,
@@ -85,6 +102,8 @@ export default function RawList({
         incident_type_id: filters.incident_type_id,
         subcategory_id: filters.subcategory_id,
     });
+    const [viewingAttachment, setViewingAttachment] =
+        useState<AnswerAttachment | null>(null);
     const selectedType = incidentTypes.find(
         (incidentType) => incidentType.id === filterValues.incident_type_id,
     );
@@ -206,56 +225,65 @@ export default function RawList({
                                 <Label htmlFor="incident-type">
                                     Incident type
                                 </Label>
-                                <select
+                                <SearchableCommand
                                     id="incident-type"
-                                    className={selectClassName}
                                     value={filterValues.incident_type_id}
-                                    onChange={(event) =>
+                                    options={[
+                                        {
+                                            value: '',
+                                            label: 'All incident types',
+                                        },
+                                        ...incidentTypes.map(
+                                            (incidentType) => ({
+                                                value: incidentType.id,
+                                                label: incidentType.name,
+                                            }),
+                                        ),
+                                    ]}
+                                    placeholder="All incident types"
+                                    searchPlaceholder="Search incident types..."
+                                    emptyMessage="No incident types found."
+                                    onValueChange={(value) =>
                                         setFilterValues((current) => ({
                                             ...current,
-                                            incident_type_id:
-                                                event.target.value,
+                                            incident_type_id: value,
                                             subcategory_id: '',
                                         }))
                                     }
-                                >
-                                    <option value="">All incident types</option>
-                                    {incidentTypes.map((incidentType) => (
-                                        <option
-                                            key={incidentType.id}
-                                            value={incidentType.id}
-                                        >
-                                            {incidentType.name}
-                                        </option>
-                                    ))}
-                                </select>
+                                />
                             </div>
                             <div className="grid gap-2">
                                 <Label htmlFor="subcategory">Subcategory</Label>
-                                <select
+                                <SearchableCommand
                                     id="subcategory"
-                                    className={selectClassName}
                                     value={filterValues.subcategory_id}
                                     disabled={!selectedType}
-                                    onChange={(event) =>
+                                    options={[
+                                        {
+                                            value: '',
+                                            label: 'All subcategories',
+                                        },
+                                        ...(selectedType?.subcategories.map(
+                                            (subcategory) => ({
+                                                value: subcategory.id,
+                                                label: subcategory.name,
+                                            }),
+                                        ) ?? []),
+                                    ]}
+                                    placeholder={
+                                        selectedType
+                                            ? 'All subcategories'
+                                            : 'Select an incident type first'
+                                    }
+                                    searchPlaceholder="Search subcategories..."
+                                    emptyMessage="No subcategories found."
+                                    onValueChange={(value) =>
                                         setFilterValues((current) => ({
                                             ...current,
-                                            subcategory_id: event.target.value,
+                                            subcategory_id: value,
                                         }))
                                     }
-                                >
-                                    <option value="">All subcategories</option>
-                                    {selectedType?.subcategories.map(
-                                        (subcategory) => (
-                                            <option
-                                                key={subcategory.id}
-                                                value={subcategory.id}
-                                            >
-                                                {subcategory.name}
-                                            </option>
-                                        ),
-                                    )}
-                                </select>
+                                />
                             </div>
                             <div className="flex gap-2">
                                 <Button type="submit" className="flex-1">
@@ -410,10 +438,27 @@ export default function RawList({
                                                                             }
                                                                             :
                                                                         </dt>
-                                                                        <dd className="break-words whitespace-pre-wrap text-muted-foreground">
-                                                                            {
+                                                                        <dd className="min-w-0 break-words whitespace-pre-wrap text-muted-foreground">
+                                                                            {answer.attachment ? (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    className="inline-flex max-w-full items-center gap-1.5 text-left font-medium text-blue-600 underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none dark:text-blue-400"
+                                                                                    onClick={() =>
+                                                                                        setViewingAttachment(
+                                                                                            answer.attachment,
+                                                                                        )
+                                                                                    }
+                                                                                >
+                                                                                    <FileImage className="size-3.5 shrink-0" />
+                                                                                    <span className="truncate">
+                                                                                        {
+                                                                                            answer.value
+                                                                                        }
+                                                                                    </span>
+                                                                                </button>
+                                                                            ) : (
                                                                                 answer.value
-                                                                            }
+                                                                            )}
                                                                         </dd>
                                                                     </div>
                                                                 ),
@@ -517,6 +562,59 @@ export default function RawList({
                         )}
                     </CardContent>
                 </Card>
+
+                <Dialog
+                    open={viewingAttachment !== null}
+                    onOpenChange={(open) => !open && setViewingAttachment(null)}
+                >
+                    <DialogContent className="max-h-[90vh] overflow-hidden sm:max-w-4xl">
+                        <DialogHeader>
+                            <DialogTitle className="truncate pr-8">
+                                {viewingAttachment?.name}
+                            </DialogTitle>
+                            <DialogDescription>
+                                Uploaded form answer preview
+                            </DialogDescription>
+                        </DialogHeader>
+                        {viewingAttachment && (
+                            <div className="flex min-h-64 items-center justify-center overflow-auto rounded-lg border bg-muted/20">
+                                {viewingAttachment.mime_type.startsWith(
+                                    'image/',
+                                ) ? (
+                                    <img
+                                        src={viewingAttachment.url}
+                                        alt={viewingAttachment.name}
+                                        className="max-h-[70vh] max-w-full object-contain"
+                                    />
+                                ) : viewingAttachment.mime_type ===
+                                  'application/pdf' ? (
+                                    <iframe
+                                        src={viewingAttachment.url}
+                                        title={viewingAttachment.name}
+                                        className="h-[70vh] w-full"
+                                    />
+                                ) : (
+                                    <div className="flex flex-col items-center gap-4 p-8 text-center">
+                                        <FileText className="size-16 text-muted-foreground" />
+                                        <p className="text-sm text-muted-foreground">
+                                            This file opens in your browser or
+                                            its associated application.
+                                        </p>
+                                        <Button asChild>
+                                            <a
+                                                href={viewingAttachment.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                            >
+                                                <Download /> Open file
+                                            </a>
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </DialogContent>
+                </Dialog>
             </div>
         </>
     );

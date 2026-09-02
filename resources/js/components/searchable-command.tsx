@@ -13,6 +13,7 @@ export type CommandOption = {
 };
 
 type SearchableCommandProps = {
+    id?: string;
     value: string;
     options: CommandOption[];
     placeholder: string;
@@ -34,6 +35,7 @@ type SearchableMultiCommandProps = {
 };
 
 export function SearchableCommand({
+    id,
     value,
     options,
     placeholder,
@@ -86,10 +88,12 @@ export function SearchableCommand({
     return (
         <div ref={rootRef} className="relative w-full">
             <Button
+                id={id}
                 type="button"
                 variant="outline"
                 role="combobox"
                 aria-expanded={open}
+                aria-haspopup="listbox"
                 disabled={disabled}
                 className="w-full justify-between font-normal"
                 onClick={() => setOpen((current) => !current)}

@@ -12,6 +12,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -40,7 +41,7 @@ class RawIncidentController extends Controller
         $filters = $this->filters($request);
         $incidents = $this->filteredIncidents($request->user(), $filters)
             ->get()
-            ->map(fn (Incident $incident): array => $this->incidentRow($incident))
+            ->map(fn (Incident $incident): array => $this->incidentRow($incident, includeAttachments: false))
             ->values()
             ->all();
 
@@ -149,11 +150,11 @@ class RawIncidentController extends Controller
     }
 
     /**
-     * @return array{id: string, incident_number: string, incident_type: string, subcategory: string, region: string, status: string, created_at: string|null, answers: array<int, array{label: string, value: string}>, answers_text: string}
+     * @return array{id: string, incident_number: string, incident_type: string, subcategory: string, region: string, status: string, created_at: string|null, answers: array<int, array{label: string, value: string, attachment: array{name: string, url: string, mime_type: string}|null}>, answers_text: string}
      */
-    private function incidentRow(Incident $incident): array
+    private function incidentRow(Incident $incident, bool $includeAttachments = true): array
     {
-        $answers = $this->reportAnswers($incident->report_data);
+        $answers = $this->reportAnswers($incident->report_data, $includeAttachments);
 
         return [
             'id' => $incident->id,
@@ -172,9 +173,9 @@ class RawIncidentController extends Controller
 
     /**
      * @param  array<string, mixed>|null  $reportData
-     * @return array<int, array{label: string, value: string}>
+     * @return array<int, array{label: string, value: string, attachment: array{name: string, url: string, mime_type: string}|null}>
      */
-    private function reportAnswers(?array $reportData): array
+    private function reportAnswers(?array $reportData, bool $includeAttachments): array
     {
         $sections = $reportData['sections'] ?? null;
 
@@ -189,6 +190,7 @@ class RawIncidentController extends Controller
             ->map(fn (array $field): array => [
                 'label' => is_string($field['label'] ?? null) ? $field['label'] : __('Untitled field'),
                 'value' => $this->reportValue($field),
+                'attachment' => $includeAttachments ? $this->reportAttachment($field) : null,
             ])
             ->values()
             ->all();
@@ -208,5 +210,41 @@ class RawIncidentController extends Controller
         }
 
         return filled($value) ? (string) $value : '—';
+    }
+
+    /**
+     * @param  array<string, mixed>  $field
+     * @return array{name: string, url: string, mime_type: string}|null
+     */
+    private function reportAttachment(array $field): ?array
+    {
+        $value = $field['display_value'] ?? $field['value'] ?? null;
+
+        if (($field['type'] ?? null) !== FormFieldType::File->value || ! is_array($value)) {
+            return null;
+        }
+
+        $path = $value['path'] ?? null;
+
+        if (! is_string($path)) {
+            return null;
+        }
+
+        $isPubliclyStored = Storage::disk('public')->exists($path);
+
+        if (! $isPubliclyStored && ! Storage::disk('local')->exists($path)) {
+            return null;
+        }
+
+        $disk = Storage::disk($isPubliclyStored ? 'public' : 'local');
+        $name = $value['name'] ?? null;
+
+        return [
+            'name' => is_string($name) ? $name : basename($path),
+            'url' => $isPubliclyStored
+                ? $disk->url($path)
+                : $disk->temporaryUrl($path, now()->addMinutes(30)),
+            'mime_type' => $disk->mimeType($path) ?: 'application/octet-stream',
+        ];
     }
 }

@@ -303,7 +303,7 @@ test('user managers can create a regionally assigned user', function () {
         ->post(route('user-management.store'), [
             'name' => '  Juan   Dela Cruz  ',
             'email' => 'JUAN@EXAMPLE.COM',
-            'password' => 'chedsprs2026',
+            'password' => 'ched!',
             'user_role' => UserRole::RegionalOfficeStaff,
             'region_id' => $region->id,
         ])
@@ -319,8 +319,8 @@ test('user managers can create a regionally assigned user', function () {
     expect($user->name)->toBe('Juan Dela Cruz')
         ->and($user->userRole?->name)->toBe(UserRole::RegionalOfficeStaff)
         ->and($user->region?->is($region))->toBeTrue()
-        ->and(Hash::check('chedsprs2026', $user->password))->toBeTrue()
-        ->and($user->password)->not->toBe('chedsprs2026');
+        ->and(Hash::check('ched!', $user->password))->toBeTrue()
+        ->and($user->password)->not->toBe('ched!');
 });
 
 test('office and super administrators can create users', function (string $managerRole, string $assignedRole) {
@@ -333,7 +333,7 @@ test('office and super administrators can create users', function (string $manag
         ->post(route('user-management.store'), [
             'name' => 'New Office User',
             'email' => $email,
-            'password' => 'chedsprs2026',
+            'password' => 'ched!',
             'user_role' => $assignedRole,
             'region_id' => $region->id,
         ])
@@ -357,7 +357,7 @@ test('user creation validates unique email role and region', function () {
         ->post(route('user-management.store'), [
             'name' => 'New User',
             'email' => $existingUser->email,
-            'password' => 'short',
+            'password' => 'bad',
             'user_role' => 'unknown-role',
             'region_id' => '01INVALIDREGIONIDENTIFIER0',
         ])
@@ -468,7 +468,7 @@ test('user managers can only view and mutate users in their own region', functio
         ->post(route('user-management.store'), [
             'name' => 'Other Region User',
             'email' => 'other-region@example.com',
-            'password' => 'chedsprs2026',
+            'password' => 'ched!',
             'user_role' => UserRole::RegionalOfficeStaff,
             'region_id' => $otherRegion->id,
         ])
@@ -507,7 +507,7 @@ test('central office roles must be assigned to the central office region', funct
         ->post(route('user-management.store'), [
             'name' => 'Central Administrator',
             'email' => 'central-admin@example.com',
-            'password' => 'chedsprs2026',
+            'password' => 'ched!',
             'user_role' => UserRole::CentralOfficeAdministrator,
             'region_id' => $regionalOffice->id,
         ])
@@ -517,7 +517,7 @@ test('central office roles must be assigned to the central office region', funct
         ->post(route('user-management.store'), [
             'name' => 'Central Administrator',
             'email' => 'central-admin@example.com',
-            'password' => 'chedsprs2026',
+            'password' => 'ched!',
             'user_role' => UserRole::CentralOfficeAdministrator,
             'region_id' => $centralRegion->id,
         ])

@@ -173,7 +173,7 @@ export default function UserManagement({
     const form = useForm({
         name: '',
         email: '',
-        password: 'chedsprs2026',
+        password: 'ched!',
         user_role: '',
         region_id: '',
     });
@@ -1875,7 +1875,7 @@ export default function UserManagement({
                                     }
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                    The default password is chedsprs2026 and is
+                                    The default password is ched! and is
                                     securely hashed when saved.
                                 </p>
                                 <InputError message={form.errors.password} />

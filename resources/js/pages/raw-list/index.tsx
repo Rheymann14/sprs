@@ -5,6 +5,9 @@ import {
     ArrowUpDown,
     ChevronLeft,
     ChevronRight,
+    CircleAlert,
+    CircleCheck,
+    Clock3,
     Download,
     Filter,
     FileImage,
@@ -47,6 +50,7 @@ type AnswerAttachment = {
 
 type SortColumn = 'created_at' | 'incident_number' | 'status';
 type SortDirection = 'asc' | 'desc';
+type StatusIcon = 'circle-check' | 'clock' | 'circle-alert';
 
 type Incident = {
     id: string;
@@ -55,6 +59,8 @@ type Incident = {
     subcategory: string;
     region: string;
     status: string;
+    status_label: string;
+    status_icon: StatusIcon;
     created_at: string;
     answers: Array<{
         label: string;
@@ -86,6 +92,35 @@ type PaginatedIncidents = {
     to: number | null;
     total: number;
 };
+
+const statusAppearances = {
+    'circle-check': {
+        icon: CircleCheck,
+        className:
+            'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300',
+    },
+    clock: {
+        icon: Clock3,
+        className:
+            'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950/50 dark:text-orange-300',
+    },
+    'circle-alert': {
+        icon: CircleAlert,
+        className:
+            'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300',
+    },
+} satisfies Record<StatusIcon, { icon: typeof CircleCheck; className: string }>;
+
+function IncidentStatusBadge({ incident }: { incident: Incident }) {
+    const appearance = statusAppearances[incident.status_icon];
+    const StatusIcon = appearance.icon;
+
+    return (
+        <Badge variant="outline" className={appearance.className}>
+            <StatusIcon /> {incident.status_label}
+        </Badge>
+    );
+}
 
 export default function RawList({
     incidents,
@@ -410,9 +445,9 @@ export default function RawList({
                                                     {incident.region}
                                                 </td>
                                                 <td className="border-r px-4 py-3">
-                                                    <Badge variant="outline">
-                                                        {incident.status}
-                                                    </Badge>
+                                                    <IncidentStatusBadge
+                                                        incident={incident}
+                                                    />
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     {incident.answers.length >
@@ -442,15 +477,15 @@ export default function RawList({
                                                                             {answer.attachment ? (
                                                                                 <button
                                                                                     type="button"
-                                                                                    className="inline-flex max-w-full items-center gap-1.5 text-left font-medium text-blue-600 underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none dark:text-blue-400"
+                                                                                    className="inline-flex max-w-full items-start gap-1.5 text-left font-medium text-blue-600 underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none dark:text-blue-400"
                                                                                     onClick={() =>
                                                                                         setViewingAttachment(
                                                                                             answer.attachment,
                                                                                         )
                                                                                     }
                                                                                 >
-                                                                                    <FileImage className="size-3.5 shrink-0" />
-                                                                                    <span className="truncate">
+                                                                                    <FileImage className="mt-px size-3.5 shrink-0" />
+                                                                                    <span className="min-w-0 break-all whitespace-normal">
                                                                                         {
                                                                                             answer.value
                                                                                         }

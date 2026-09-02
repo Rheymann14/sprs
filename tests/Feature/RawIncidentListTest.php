@@ -77,6 +77,7 @@ test('raw incident rows show the saved form answers', function () {
         ->for($region)
         ->for($subcategory, 'subcategory')
         ->create([
+            'status' => 'Pending',
             'report_data' => [
                 'title' => 'Safety report',
                 'description' => 'Initial submission',
@@ -113,6 +114,8 @@ test('raw incident rows show the saved form answers', function () {
             ->where('incidents.data.0.answers.2.attachment.name', 'laboratory.jpg')
             ->where('incidents.data.0.answers.2.attachment.url', Storage::disk('public')->url($uploadedImagePath))
             ->where('incidents.data.0.answers.2.attachment.mime_type', 'image/jpeg')
+            ->where('incidents.data.0.status_label', 'Pending')
+            ->where('incidents.data.0.status_icon', 'clock')
         );
 
     $this->actingAs($otherUser)

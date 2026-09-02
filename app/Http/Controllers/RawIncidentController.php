@@ -67,6 +67,7 @@ class RawIncidentController extends Controller
                 'region:id,name',
                 'subcategory:id,incident_type_id,name',
                 'subcategory.incidentType:id,name',
+                'subcategory.statuses:id,incident_subcategory_id,name,icon,sort_order',
             ])
             ->when($filters['date_from'] !== '', fn (Builder $query) => $query->whereDate('created_at', '>=', $filters['date_from']))
             ->when($filters['date_to'] !== '', fn (Builder $query) => $query->whereDate('created_at', '<=', $filters['date_to']))
@@ -150,11 +151,12 @@ class RawIncidentController extends Controller
     }
 
     /**
-     * @return array{id: string, incident_number: string, incident_type: string, subcategory: string, region: string, status: string, created_at: string|null, answers: array<int, array{label: string, value: string, attachment: array{name: string, url: string, mime_type: string}|null}>, answers_text: string}
+     * @return array{id: string, incident_number: string, incident_type: string, subcategory: string, region: string, status: string, status_label: string, status_icon: string, created_at: string|null, answers: array<int, array{label: string, value: string, attachment: array{name: string, url: string, mime_type: string}|null}>, answers_text: string}
      */
     private function incidentRow(Incident $incident, bool $includeAttachments = true): array
     {
         $answers = $this->reportAnswers($incident->report_data, $includeAttachments);
+        $statusDefinition = $incident->managedStatusDefinition();
 
         return [
             'id' => $incident->id,
@@ -163,6 +165,8 @@ class RawIncidentController extends Controller
             'subcategory' => $incident->subcategory->name,
             'region' => $incident->region->name,
             'status' => $incident->status,
+            'status_label' => $statusDefinition['name'],
+            'status_icon' => $statusDefinition['icon'],
             'created_at' => $incident->created_at?->toIso8601String(),
             'answers' => $answers,
             'answers_text' => collect($answers)

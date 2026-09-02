@@ -95,6 +95,8 @@ Route::middleware(['auth', 'verified', 'can:manage-users'])->group(function () {
         ->name('user-management.store');
     Route::put('user-management/{user}', [UserManagementController::class, 'update'])
         ->name('user-management.update');
+    Route::patch('user-management/{user}/reset-password', [UserManagementController::class, 'resetPassword'])
+        ->name('user-management.reset-password');
     Route::delete('user-management/{user}', [UserManagementController::class, 'destroy'])
         ->name('user-management.destroy');
 

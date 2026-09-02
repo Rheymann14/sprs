@@ -12,12 +12,15 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class UserManagementController extends Controller
 {
+    private const DEFAULT_PASSWORD = 'ched!';
+
     public function index(Request $request): Response
     {
         $manager = $request->user();
@@ -247,6 +250,19 @@ class UserManagementController extends Controller
         $user->delete();
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('User deleted.')]);
+
+        return to_route('user-management.index');
+    }
+
+    public function resetPassword(Request $request, User $user): RedirectResponse
+    {
+        abort_unless($request->user()->canAccessRegion($user->region_id), 404);
+
+        $user->update([
+            'password' => Hash::make(self::DEFAULT_PASSWORD),
+        ]);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Password reset to the default password.')]);
 
         return to_route('user-management.index');
     }

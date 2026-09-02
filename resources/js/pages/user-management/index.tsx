@@ -3,6 +3,7 @@ import {
     CalendarDays,
     ChevronLeft,
     ChevronRight,
+    KeyRound,
     Mail,
     MapPin,
     MapPinned,
@@ -23,6 +24,7 @@ import {
 import {
     destroy,
     index as userManagement,
+    resetPassword,
     store,
     update,
 } from '@/actions/App/Http/Controllers/UserManagementController';
@@ -151,6 +153,9 @@ export default function UserManagement({
     const getInitials = useInitials();
     const [addUserOpen, setAddUserOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
+    const [resettingUser, setResettingUser] = useState<ManagedUser | null>(
+        null,
+    );
     const [deletingUser, setDeletingUser] = useState<ManagedUser | null>(null);
     const [searchQuery, setSearchQuery] = useState(filters.search);
     const [activeTab, setActiveTab] = useState<ManagementTab>(filters.tab);
@@ -180,6 +185,7 @@ export default function UserManagement({
         region_id: '',
     });
     const deletionForm = useForm({});
+    const passwordResetForm = useForm({});
     const roleForm = useForm({
         display_name: '',
         organization_group: '',
@@ -328,6 +334,17 @@ export default function UserManagement({
         deletionForm.delete(destroy.url(deletingUser.id), {
             preserveScroll: true,
             onSuccess: () => setDeletingUser(null),
+        });
+    };
+
+    const confirmPasswordReset = () => {
+        if (!resettingUser) {
+            return;
+        }
+
+        passwordResetForm.patch(resetPassword.url(resettingUser.id), {
+            preserveScroll: true,
+            onSuccess: () => setResettingUser(null),
         });
     };
 
@@ -710,6 +727,20 @@ export default function UserManagement({
                                                                 type="button"
                                                                 size="icon"
                                                                 variant="outline"
+                                                                aria-label={`Reset password for ${user.name}`}
+                                                                title={`Reset password for ${user.name}`}
+                                                                onClick={() =>
+                                                                    setResettingUser(
+                                                                        user,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <KeyRound />
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                size="icon"
+                                                                variant="outline"
                                                                 disabled={
                                                                     !user.can_delete
                                                                 }
@@ -803,7 +834,7 @@ export default function UserManagement({
                                                     </dd>
                                                 </div>
                                             </dl>
-                                            <div className="mt-4 grid grid-cols-2 gap-2 border-t pt-4">
+                                            <div className="mt-4 grid grid-cols-3 gap-2 border-t pt-4">
                                                 <Button
                                                     type="button"
                                                     size="sm"
@@ -813,6 +844,16 @@ export default function UserManagement({
                                                     }
                                                 >
                                                     <Pencil /> Edit
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() =>
+                                                        setResettingUser(user)
+                                                    }
+                                                >
+                                                    <KeyRound /> Reset
                                                 </Button>
                                                 <Button
                                                     type="button"
@@ -2051,6 +2092,48 @@ export default function UserManagement({
                             </Button>
                         </DialogFooter>
                     </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={resettingUser !== null}
+                onOpenChange={(open) => {
+                    if (!open && !passwordResetForm.processing) {
+                        setResettingUser(null);
+                    }
+                }}
+            >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Reset password?</DialogTitle>
+                        <DialogDescription>
+                            Reset the password for{' '}
+                            <span className="font-medium text-foreground">
+                                {resettingUser?.name}
+                            </span>{' '}
+                            to the default password.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={passwordResetForm.processing}
+                            onClick={() => setResettingUser(null)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            disabled={passwordResetForm.processing}
+                            onClick={confirmPasswordReset}
+                        >
+                            <KeyRound />
+                            {passwordResetForm.processing
+                                ? 'Resetting...'
+                                : 'Reset password'}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 

@@ -416,6 +416,24 @@ test('user managers can delete another user but not themselves', function () {
     $this->assertModelExists($manager);
 });
 
+test('user managers can reset a user password to the default password', function () {
+    $manager = userManager();
+    $targetUser = User::factory()->for($manager->region)->create([
+        'password' => 'original-password',
+    ]);
+
+    $this->actingAs($manager)
+        ->patch(route('user-management.reset-password', $targetUser))
+        ->assertRedirect(route('user-management.index'))
+        ->assertInertiaFlash('toast.type', 'success')
+        ->assertInertiaFlash('toast.message', 'Password reset to the default password.');
+
+    $targetUser->refresh();
+
+    expect(Hash::check('ched!', $targetUser->password))->toBeTrue()
+        ->and($targetUser->password)->not->toBe('ched!');
+});
+
 test('user managers can only view and mutate users in their own region', function () {
     $managerRegion = Region::factory()->create();
     $otherRegion = Region::factory()->create();
@@ -435,6 +453,14 @@ test('user managers can only view and mutate users in their own region', functio
     $this->actingAs($manager)
         ->delete(route('user-management.destroy', $otherUser))
         ->assertNotFound();
+
+    $originalPassword = $otherUser->password;
+
+    $this->actingAs($manager)
+        ->patch(route('user-management.reset-password', $otherUser))
+        ->assertNotFound();
+
+    expect($otherUser->refresh()->password)->toBe($originalPassword);
 
     $this->assertModelExists($otherUser);
 

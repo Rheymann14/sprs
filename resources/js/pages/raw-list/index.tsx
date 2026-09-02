@@ -465,7 +465,11 @@ export default function RawList({
                                                                         ].join(
                                                                             '-',
                                                                         )}
-                                                                        className="grid grid-cols-[minmax(7rem,auto)_1fr] gap-2"
+                                                                        className={
+                                                                            answer.attachment
+                                                                                ? 'grid gap-1'
+                                                                                : 'grid grid-cols-[minmax(7rem,auto)_1fr] gap-2'
+                                                                        }
                                                                     >
                                                                         <dt className="font-semibold text-foreground">
                                                                             {

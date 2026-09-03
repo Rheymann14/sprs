@@ -153,13 +153,15 @@ function IncidentAnswers({
                             ? 'grid min-w-0 gap-1'
                             : answer.attachment
                               ? 'grid gap-1'
-                              : 'grid grid-cols-[minmax(7rem,auto)_1fr] gap-2'
+                              : 'flex min-w-0 flex-wrap items-start gap-x-2 gap-y-1'
                     }
                 >
-                    <dt className="font-semibold text-foreground">
+                    <dt className="max-w-full shrink-0 font-semibold break-words text-foreground">
                         {answer.label}:
                     </dt>
-                    <dd className="min-w-0 break-words whitespace-pre-wrap text-muted-foreground">
+                    <dd
+                        className={`min-w-0 break-words whitespace-pre-wrap text-muted-foreground ${!mobile && !answer.attachment ? 'min-w-72 flex-1' : ''}`}
+                    >
                         {answer.attachment ? (
                             <button
                                 type="button"

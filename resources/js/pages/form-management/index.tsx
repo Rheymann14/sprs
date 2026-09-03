@@ -832,7 +832,7 @@ export default function FormManagement({
         form.setData('sections', sections);
     };
 
-    const addField = (sectionIndex: number, sectionKey: string) => {
+    const addField = (sectionKey: string) => {
         const type = pendingFieldTypes[sectionKey] ?? 'text';
         const label =
             fieldTypes.find((fieldType) => fieldType.value === type)?.label ??
@@ -840,17 +840,17 @@ export default function FormManagement({
         const field = createField(type, label);
 
         markFieldUnsaved(field.client_key);
-        form.setData(
-            'sections',
-            form.data.sections.map((section, index) =>
-                index === sectionIndex
+        form.setData((currentData) => ({
+            ...currentData,
+            sections: currentData.sections.map((section) =>
+                section.client_key === sectionKey
                     ? {
                           ...section,
                           fields: [...section.fields, field],
                       }
                     : section,
             ),
-        );
+        }));
         scrollToEditorItem(`field-${field.client_key}`);
     };
 
@@ -875,7 +875,7 @@ export default function FormManagement({
             return;
         }
 
-        addField(sectionIndex, activeActionSectionKey);
+        addField(activeActionSectionKey);
     };
 
     const moveField = (

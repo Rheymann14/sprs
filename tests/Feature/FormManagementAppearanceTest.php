@@ -52,3 +52,13 @@ test('saved incident forms display until a subcategory is selected', function ()
         ->toContain('{showSavedForms ? (')
         ->toContain('incident_type: selectedIncidentTypeId || undefined');
 });
+
+test('adding fields uses the latest form state', function () {
+    $page = file_get_contents(resource_path('js/pages/form-management/index.tsx'));
+
+    expect($page)
+        ->toContain('form.setData((currentData) => ({')
+        ->toContain('sections: currentData.sections.map((section) =>')
+        ->toContain('section.client_key === sectionKey')
+        ->not->toContain('addField(sectionIndex, activeActionSectionKey)');
+});

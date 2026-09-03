@@ -613,6 +613,39 @@ test('incident conversations initially load only the latest messages', function 
         );
 });
 
+test('authorized users can load the complete incident conversation for printing', function () {
+    $region = Region::factory()->create();
+    $otherRegion = Region::factory()->create();
+    $user = incidentUser($region);
+    $otherUser = incidentUser($otherRegion);
+    $incident = Incident::factory()->for($region)->create(['status' => 'Pending']);
+
+    $messages = IncidentMessage::factory()
+        ->count(35)
+        ->for($incident)
+        ->for($user)
+        ->sequence(fn (Sequence $sequence): array => [
+            'message' => "Message {$sequence->index}",
+            'created_at' => now()->addSeconds($sequence->index),
+        ])
+        ->create();
+    IncidentMessageAttachment::factory()
+        ->for($messages->first(), 'message')
+        ->create(['original_name' => 'initial-evidence.pdf']);
+
+    $this->actingAs($user)
+        ->getJson(route('incidents.print-data', $incident))
+        ->assertSuccessful()
+        ->assertJsonCount(35, 'messages')
+        ->assertJsonPath('messages.0.message', 'Message 0')
+        ->assertJsonPath('messages.0.attachments.0.name', 'initial-evidence.pdf')
+        ->assertJsonPath('messages.34.message', 'Message 34');
+
+    $this->actingAs($otherUser)
+        ->getJson(route('incidents.print-data', $incident))
+        ->assertForbidden();
+});
+
 test('incident conversation files include attachments outside the bounded message history', function () {
     $region = Region::factory()->create();
     $viewer = incidentUser($region);

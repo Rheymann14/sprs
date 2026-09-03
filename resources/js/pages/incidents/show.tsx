@@ -9,9 +9,11 @@ import {
     Clock3,
     Download,
     FileText,
+    LoaderCircle,
     Paperclip,
     Pencil,
     Plus,
+    Printer,
     Search,
     Send,
     Trash2,
@@ -20,6 +22,7 @@ import {
 } from 'lucide-react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import {
     destroy as destroyAttachmentType,
     store as storeAttachmentType,
@@ -27,6 +30,7 @@ import {
 } from '@/actions/App/Http/Controllers/AttachmentTypeController';
 import {
     index as incidentsIndex,
+    printData,
     show as showIncident,
     updateStatus,
 } from '@/actions/App/Http/Controllers/IncidentController';
@@ -537,6 +541,7 @@ export default function IncidentShow({
     const [attachmentTypeEditor, setAttachmentTypeEditor] = useState<
         'create' | 'edit' | null
     >(null);
+    const [isPreparingPdf, setIsPreparingPdf] = useState(false);
     const messageForm = useForm<{
         message: string;
         attachment_type_id: string;
@@ -673,6 +678,66 @@ export default function IncidentShow({
         });
     };
 
+    const printIncident = async () => {
+        const printWindow = window.open('', '_blank');
+
+        if (printWindow) {
+            printWindow.document.title = `Preparing ${incident.incident_number}`;
+            printWindow.document.body.textContent = 'Preparing incident PDF…';
+        }
+
+        setIsPreparingPdf(true);
+
+        try {
+            const response = await fetch(printData.url(incident.id), {
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error('Unable to load the complete conversation.');
+            }
+
+            const printConversation = (await response.json()) as {
+                messages: IncidentMessage[];
+            };
+            const [{ pdf }, { IncidentPdfDocument }] = await Promise.all([
+                import('@react-pdf/renderer'),
+                import('@/components/incident-pdf-document'),
+            ]);
+            const blob = await pdf(
+                <IncidentPdfDocument
+                    incident={incident}
+                    messages={printConversation.messages}
+                    routing={routing}
+                    generatedAt={new Date().toISOString()}
+                />,
+            ).toBlob();
+            const pdfUrl = URL.createObjectURL(blob);
+
+            if (printWindow) {
+                printWindow.location.href = pdfUrl;
+            } else {
+                const downloadLink = document.createElement('a');
+                downloadLink.href = pdfUrl;
+                downloadLink.download = `${incident.incident_number}.pdf`;
+                downloadLink.click();
+            }
+
+            window.setTimeout(() => URL.revokeObjectURL(pdfUrl), 300_000);
+        } catch {
+            printWindow?.close();
+            toast.error(
+                'The incident PDF could not be prepared. Please try again.',
+            );
+        } finally {
+            setIsPreparingPdf(false);
+        }
+    };
+
     return (
         <>
             <Head title={`Incident ${incident.incident_number}`} />
@@ -695,11 +760,26 @@ export default function IncidentShow({
                             {incident.incident_type} · {incident.subcategory}
                         </p>
                     </header>
-                    <Button variant="outline" asChild>
-                        <Link href={incidentsIndex()}>
-                            <ArrowLeft /> Back to incidents
-                        </Link>
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={isPreparingPdf}
+                            onClick={() => void printIncident()}
+                        >
+                            {isPreparingPdf ? (
+                                <LoaderCircle className="animate-spin" />
+                            ) : (
+                                <Printer />
+                            )}
+                            {isPreparingPdf ? 'Preparing PDF…' : 'Print PDF'}
+                        </Button>
+                        <Button variant="outline" asChild>
+                            <Link href={incidentsIndex()}>
+                                <ArrowLeft /> Back to incidents
+                            </Link>
+                        </Button>
+                    </div>
                 </div>
 
                 <Card>

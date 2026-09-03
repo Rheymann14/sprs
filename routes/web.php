@@ -31,6 +31,9 @@ Route::get('incidents/report', [IncidentController::class, 'create'])
 Route::get('incidents/report/{incident}', [IncidentController::class, 'edit'])
     ->middleware(['auth', 'verified'])
     ->name('incidents.edit');
+Route::get('incidents/{incident}/print-data', [IncidentController::class, 'printData'])
+    ->middleware(['auth', 'verified'])
+    ->name('incidents.print-data');
 Route::get('incidents/{incident}', [IncidentController::class, 'show'])
     ->middleware(['auth', 'verified'])
     ->name('incidents.show');

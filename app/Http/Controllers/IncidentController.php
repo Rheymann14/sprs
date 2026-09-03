@@ -18,6 +18,7 @@ use App\Models\Region;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -171,14 +172,7 @@ class IncidentController extends Controller
             'routedRegions:id,name',
         ]);
 
-        $messages = $incident->messages()
-            ->select('id', 'incident_id', 'user_id', 'message', 'created_at')
-            ->with([
-                'user:id,name,user_role_id',
-                'user.userRole:id,organization_group',
-                'attachments:id,incident_message_id,attachment_type_id,original_name,path,mime_type,size',
-                'attachments.attachmentType:id,name',
-            ])
+        $messages = $this->incidentMessages($incident)
             ->latest()
             ->limit($messageLimit + 1)
             ->get();
@@ -206,24 +200,7 @@ class IncidentController extends Controller
                 'can_manage_status' => $request->user()->can('manage-incident-statuses'),
             ],
             'conversation' => fn (): array => [
-                'messages' => $messages->map(fn ($message): array => [
-                    'id' => $message->id,
-                    'message' => $message->message,
-                    'sender_name' => $message->user->name,
-                    'sender_label' => $message->user->userRole?->organization_group === UserRoleGroup::CentralOffice
-                        ? 'CHED CO'
-                        : 'CHED RO',
-                    'is_own' => $message->user_id === $request->user()->id,
-                    'created_at' => $message->created_at?->toIso8601String(),
-                    'attachments' => $message->attachments->map(fn ($attachment): array => [
-                        'id' => $attachment->id,
-                        'name' => $attachment->original_name,
-                        'url' => Storage::disk('public')->url($attachment->path),
-                        'mime_type' => $attachment->mime_type,
-                        'size' => $attachment->size,
-                        'type_name' => $attachment->attachmentType?->name,
-                    ])->all(),
-                ])->all(),
+                'messages' => $this->messagesForDisplay($messages, $request->user()->id),
                 'has_earlier_messages' => $hasEarlierMessages,
                 'message_limit' => $messageLimit,
             ],
@@ -265,6 +242,54 @@ class IncidentController extends Controller
                     : [],
             ],
         ]);
+    }
+
+    public function printData(Request $request, Incident $incident): JsonResponse
+    {
+        abort_unless($incident->isAccessibleBy($request->user()), 403);
+
+        $messages = $this->incidentMessages($incident)
+            ->oldest()
+            ->get();
+
+        return response()->json([
+            'messages' => $this->messagesForDisplay($messages, $request->user()->id),
+        ]);
+    }
+
+    private function incidentMessages(Incident $incident): HasMany
+    {
+        return $incident->messages()
+            ->select('id', 'incident_id', 'user_id', 'message', 'created_at')
+            ->with([
+                'user:id,name,user_role_id',
+                'user.userRole:id,organization_group',
+                'attachments:id,incident_message_id,attachment_type_id,original_name,path,mime_type,size',
+                'attachments.attachmentType:id,name',
+            ]);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function messagesForDisplay(Collection $messages, int $viewerId): array
+    {
+        return $messages->map(fn ($message): array => [
+            'id' => $message->id,
+            'message' => $message->message,
+            'sender_name' => $message->user->name,
+            'sender_label' => $message->user->userRole?->organization_group === UserRoleGroup::CentralOffice
+                ? 'CHED CO'
+                : 'CHED RO',
+            'is_own' => $message->user_id === $viewerId,
+            'created_at' => $message->created_at?->toIso8601String(),
+            'attachments' => $message->attachments->map(fn ($attachment): array => [
+                'id' => $attachment->id,
+                'name' => $attachment->original_name,
+                'url' => Storage::disk('public')->url($attachment->path),
+                'mime_type' => $attachment->mime_type,
+                'size' => $attachment->size,
+                'type_name' => $attachment->attachmentType?->name,
+            ])->all(),
+        ])->all();
     }
 
     /** @return array<int, array<string, mixed>> */
